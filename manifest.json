@@ -1,0 +1,22 @@
+{
+  "name": "CCPM Test App",
+  "version": "1.0.0",
+  "type": "board-view",
+  "description": "Testing Monday.com board connection for CCPM",
+  "short_description": "Monday.com connection test",
+  "icon": "https://via.placeholder.com/150/0073EA/FFFFFF?text=TEST",
+  "screenshots": [],
+  "categories": ["project-management"],
+  "permissions": [
+    "boards:read",
+    "me:read"
+  ],
+  "features": [
+    {
+      "type": "board-view",
+      "assets": {
+        "primary": "index.html"
+      }
+    }
+  ]
+}
