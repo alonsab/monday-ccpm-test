@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Monday Board Display</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://dapulse-res.cloudinary.com/image/upload/remote_logos/995333-ec8cea4e1cbd2bd50c4bb5e24c83df0b.js"></script>
+</head>
+<body class="bg-gray-50 p-4">
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <div class="bg-blue-600 text-white rounded-lg p-6 mb-6">
+            <h1 class="text-2xl font-bold">Simple Monday.com Board Display</h1>
+            <p class="text-blue-100 mt-2">Testing connection to your Monday.com boards</p>
+        </div>
+
+        <!-- Connection Status -->
+        <div class="bg-white rounded-lg border p-6 mb-6">
+            <h2 class="text-lg font-semibold mb-4">🔗 Connection Status</h2>
+            <div id="connectionInfo" class="space-y-2 text-sm">
+                <div>SDK Status: <span id="sdkStatus" class="font-mono">Checking...</span></div>
+                <div>Context Status: <span id="contextStatus" class="font-mono">Waiting...</span></div>
+                <div>Board ID: <span id="boardIdDisplay" class="font-mono">Not detected</span></div>
+                <div>User ID: <span id="userIdDisplay" class="font-mono">Not detected</span></div>
+                <div>Account ID: <span id="accountIdDisplay" class="font-mono">Not detected</span></div>
+            </div>
+            
+            <button onclick="testConnection()" 
+                    class="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                Test Connection
+            </button>
+        </div>
+
+        <!-- Raw Data Display -->
+        <div class="bg-white rounded-lg border p-6 mb-6">
+            <h2 class="text-lg font-semibold mb-4">📊 Raw Monday.com Data</h2>
+            <div class="bg-gray-100 rounded p-4 text-sm font-mono">
+                <pre id="rawDataDisplay">No data loaded yet...</pre>
+            </div>
+        </div>
+
+        <!-- Board Data -->
+        <div id="boardDataSection" class="bg-white rounded-lg border p-6 hidden">
+            <h2 class="text-lg font-semibold mb-4">📋 Board Information</h2>
+            <div id="boardInfo" class="mb-4">
+                <!-- Board details will be populated here -->
+            </div>
+            
+            <h3 class="text-md font-semibold mb-3">Tasks</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse border border-gray-300">
+                    <thead>
+                        <tr class="bg-gray-50">
+                            <th class="border border-gray-300 px-4 py-2 text-left">Task Name</th>
+                            <th class="border border-gray-300 px-4 py-2 text-left">ID</th>
+                            <th class="border border-gray-300 px-4 py-2 text-left">Duration/Timeline</th>
+                            <th class="border border-gray-300 px-4 py-2 text-left">Start Date</th>
+                            <th class="border border-gray-300 px-4 py-2 text-left">End Date</th>
+                            <th class="border border-gray-300 px-4 py-2 text-left">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tasksTableBody">
+                        <!-- Tasks will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Columns Information -->
+        <div id="columnsSection" class="bg-white rounded-lg border p-6 hidden">
+            <h2 class="text-lg font-semibold mb-4">📊 Board Columns</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <h3 class="font-medium mb-2">Available Columns:</h3>
+                    <div id="columnsList" class="text-sm space-y-1">
+                        <!-- Columns will be populated here -->
+                    </div>
+                </div>
+                <div>
+                    <h3 class="font-medium mb-2">Column Types Found:</h3>
+                    <div id="columnTypes" class="text-sm space-y-1">
+                        <!-- Column types will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Debug Log -->
+        <div class="bg-gray-900 text-green-400 rounded-lg p-6">
+            <h2 class="text-lg font-semibold mb-4 text-white">🐛 Debug Log</h2>
+            <div id="debugLog" class="text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto">
+Starting application...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Simple logging function
+        function log(message) {
+            const timestamp = new Date().toISOString();
+            const logEntry = `[${timestamp}] ${message}\n`;
+            document.getElementById('debugLog').textContent += logEntry;
+            console.log(`[Monday App] ${message}`);
+        }
+
+        // Global variables
+        let monday = null;
+        let currentContext = null;
+
+        // Initialize Monday SDK
+        function initializeSDK() {
+            log('Checking for Monday SDK...');
+            
+            if (typeof mondaySDK !== 'undefined') {
+                try {
+                    monday = mondaySDK();
+                    log('✅ Monday SDK initialized successfully');
+                    document.getElementById('sdkStatus').textContent = '✅ Available';
+                    return true;
+                } catch (error) {
+                    log(`❌ Failed to initialize Monday SDK: ${error.message}`);
+                    document.getElementById('sdkStatus').textContent = '❌ Failed to initialize';
+                    return false;
+                }
+            } else {
+                log('❌ Monday SDK not found - not running in Monday.com environment');
+                document.getElementById('sdkStatus').textContent = '❌ Not available';
+                return false;
+            }
+        }
+
+        // Get context from Monday
+        async function getContext() {
+            if (!monday) {
+                log('❌ Cannot get context - SDK not available');
+                return null;
+            }
+
+            try {
+                log('🔍 Requesting context from Monday.com...');
+                
+                // Set a timeout for the context request
+                const contextPromise = monday.get("context");
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Context request timeout')), 10000)
+                );
+                
+                const context = await Promise.race([contextPromise, timeoutPromise]);
+                
+                log(`✅ Context received: ${JSON.stringify(context, null, 2)}`);
+                document.getElementById('contextStatus').textContent = '✅ Received';
+                
+                // Display context information
+                if (context.data) {
+                    currentContext = context.data;
+                    
+                    if (context.data.boardId) {
+                        document.getElementById('boardIdDisplay').textContent = context.data.boardId;
+                        log(`📋 Board ID: ${context.data.boardId}`);
+                    }
+                    
+                    if (context.data.userId) {
+                        document.getElementById('userIdDisplay').textContent = context.data.userId;
+                        log(`👤 User ID: ${context.data.userId}`);
+                    }
+                    
+                    if (context.data.accountId) {
+                        document.getElementById('accountIdDisplay').textContent = context.data.accountId;
+                        log(`🏢 Account ID: ${context.data.accountId}`);
+                    }
+                }
+                
+                return context;
+                
+            } catch (error) {
+                log(`❌ Failed to get context: ${error.message}`);
+                document.getElementById('contextStatus').textContent = `❌ Failed: ${error.message}`;
+                return null;
+            }
+        }
+
+        // Load board data
+        async function loadBoardData(boardId) {
+            if (!monday) {
+                log('❌ Cannot load board - SDK not available');
+                return;
+            }
+
+            try {
+                log(`🔍 Loading board data for ID: ${boardId}`);
+                
+                const query = `
+                    query {
+                        boards(ids: [${boardId}]) {
+                            id
+                            name
+                            description
+                            state
+                            items_count
+                            updated_at
+                            columns {
+                                id
+                                title
+                                type
+                                settings_str
+                            }
+                            items {
+                                id
+                                name
+                                state
+                                created_at
+                                updated_at
+                                column_values {
+                                    id
+                                    title
+                                    value
+                                    text
+                                    type
+                                }
+                            }
+                        }
+                    }
+                `;
+                
+                log('📤 Sending GraphQL query...');
+                const response = await monday.api(query);
+                
+                log(`📥 API Response: ${JSON.stringify(response, null, 2)}`);
+                
+                // Display raw data
+                document.getElementById('rawDataDisplay').textContent = JSON.stringify(response, null, 2);
+                
+                if (response.data && response.data.boards && response.data.boards.length > 0) {
+                    const board = response.data.boards[0];
+                    log(`✅ Board loaded: "${board.name}" with ${board.items_count} items`);
+                    
+                    displayBoardData(board);
+                } else {
+                    log('❌ No board data found in response');
+                }
+                
+            } catch (error) {
+                log(`❌ Failed to load board data: ${error.message}`);
+                document.getElementById('rawDataDisplay').textContent = `Error: ${error.message}`;
+            }
+        }
+
+        // Display board data in the UI
+        function displayBoardData(board) {
+            log(`📊 Displaying board data for: ${board.name}`);
+            
+            // Show board info
+            document.getElementById('boardInfo').innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div><strong>Name:</strong> ${board.name}</div>
+                    <div><strong>ID:</strong> ${board.id}</div>
+                    <div><strong>Items Count:</strong> ${board.items_count}</div>
+                    <div><strong>State:</strong> ${board.state}</div>
+                    <div><strong>Updated:</strong> ${new Date(board.updated_at).toLocaleString()}</div>
+                    <div><strong>Description:</strong> ${board.description || 'No description'}</div>
+                </div>
+            `;
+            
+            // Show tasks
+            const tasksTableBody = document.getElementById('tasksTableBody');
+            if (board.items && board.items.length > 0) {
+                tasksTableBody.innerHTML = board.items.map(item => {
+                    // Extract duration, start date, end date from columns
+                    let duration = 'N/A';
+                    let startDate = 'N/A';
+                    let endDate = 'N/A';
+                    let status = 'N/A';
+                    
+                    item.column_values.forEach(col => {
+                        // Look for timeline columns
+                        if (col.type === 'timeline' && col.value) {
+                            try {
+                                const timelineData = JSON.parse(col.value);
+                                if (timelineData.from) startDate = timelineData.from;
+                                if (timelineData.to) endDate = timelineData.to;
+                                
+                                // Calculate duration if both dates exist
+                                if (timelineData.from && timelineData.to) {
+                                    const start = new Date(timelineData.from);
+                                    const end = new Date(timelineData.to);
+                                    const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+                                    duration = `${diffDays} days`;
+                                }
+                            } catch (e) {
+                                log(`⚠️ Failed to parse timeline for ${item.name}: ${e.message}`);
+                            }
+                        }
+                        
+                        // Look for numeric duration columns
+                        if (col.type === 'numeric' && col.value && 
+                            (col.title.toLowerCase().includes('duration') || 
+                             col.title.toLowerCase().includes('days'))) {
+                            duration = `${col.value} days`;
+                        }
+                        
+                        // Look for date columns
+                        if (col.type === 'date' && col.value) {
+                            try {
+                                const dateData = JSON.parse(col.value);
+                                if (dateData.date) {
+                                    if (col.title.toLowerCase().includes('start')) {
+                                        startDate = dateData.date;
+                                    } else if (col.title.toLowerCase().includes('end') || col.title.toLowerCase().includes('due')) {
+                                        endDate = dateData.date;
+                                    }
+                                }
+                            } catch (e) {
+                                log(`⚠️ Failed to parse date for ${item.name}: ${e.message}`);
+                            }
+                        }
+                        
+                        // Look for status columns
+                        if (col.type === 'status' && col.text) {
+                            status = col.text;
+                        }
+                    });
+                    
+                    return `
+                        <tr>
+                            <td class="border border-gray-300 px-4 py-2">${item.name}</td>
+                            <td class="border border-gray-300 px-4 py-2 font-mono text-xs">${item.id}</td>
+                            <td class="border border-gray-300 px-4 py-2">${duration}</td>
+                            <td class="border border-gray-300 px-4 py-2">${startDate !== 'N/A' ? new Date(startDate).toLocaleDateString() : 'N/A'}</td>
+                            <td class="border border-gray-300 px-4 py-2">${endDate !== 'N/A' ? new Date(endDate).toLocaleDateString() : 'N/A'}</td>
+                            <td class="border border-gray-300 px-4 py-2">${status}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } else {
+                tasksTableBody.innerHTML = '<tr><td colspan="6" class="border border-gray-300 px-4 py-2 text-center text-gray-500">No items found</td></tr>';
+            }
+            
+            // Show columns info
+            if (board.columns && board.columns.length > 0) {
+                const columnsList = document.getElementById('columnsList');
+                columnsList.innerHTML = board.columns.map(col => 
+                    `<div>• <strong>${col.title}</strong> (${col.type}) - ID: ${col.id}</div>`
+                ).join('');
+                
+                // Group columns by type
+                const columnTypes = {};
+                board.columns.forEach(col => {
+                    if (!columnTypes[col.type]) columnTypes[col.type] = [];
+                    columnTypes[col.type].push(col.title);
+                });
+                
+                const columnTypesDiv = document.getElementById('columnTypes');
+                columnTypesDiv.innerHTML = Object.entries(columnTypes).map(([type, titles]) => 
+                    `<div><strong>${type}:</strong> ${titles.join(', ')}</div>`
+                ).join('');
+            }
+            
+            // Show the sections
+            document.getElementById('boardDataSection').classList.remove('hidden');
+            document.getElementById('columnsSection').classList.remove('hidden');
+        }
+
+        // Test connection function
+        async function testConnection() {
+            log('🔄 Testing connection...');
+            
+            // Step 1: Initialize SDK
+            if (!initializeSDK()) {
+                return;
+            }
+            
+            // Step 2: Get context
+            const context = await getContext();
+            if (!context || !context.data) {
+                log('❌ Cannot proceed without context');
+                return;
+            }
+            
+            // Step 3: Load board data if we have a board ID
+            if (context.data.boardId) {
+                await loadBoardData(context.data.boardId);
+            } else {
+                log('⚠️ No board ID in context - app not opened from a board view');
+            }
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', async function() {
+            log('🚀 Starting Simple Monday Board Display');
+            log(`📍 Current URL: ${window.location.href}`);
+            log(`🌐 User Agent: ${navigator.userAgent}`);
+            
+            // Wait a bit for Monday SDK to load
+            setTimeout(async () => {
+                await testConnection();
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
