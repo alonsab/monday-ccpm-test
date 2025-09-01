@@ -3,169 +3,387 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Monday.com Tasks</title>
+    <title>Monday.com Board Tasks</title>
+    <!-- DO NOT load Monday SDK externally - it's injected by Monday.com -->
     <style>
         body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            margin: 0; padding: 20px; background: #f8f9fa; color: #333;
+            font-family: Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            margin: 0; padding: 16px; background: #f6f7fb; color: #323338; line-height: 1.5;
         }
-        .container { max-width: 1000px; margin: 0 auto; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        
         .header { 
-            background: #0073ea; color: white; padding: 24px; border-radius: 8px;
-            margin-bottom: 24px; text-align: center;
+            background: linear-gradient(135deg, #0073ea 0%, #00d2ff 100%);
+            color: white; padding: 24px; border-radius: 12px; margin-bottom: 24px;
+            text-align: center; box-shadow: 0 4px 16px rgba(0,115,234,0.2);
         }
+        .header h1 { margin: 0 0 8px 0; font-size: 28px; font-weight: 600; }
+        .header p { margin: 0; opacity: 0.9; font-size: 16px; }
+        
         .card { 
-            background: white; border-radius: 8px; padding: 24px; margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 1px solid #e1e5e9;
+            background: white; border-radius: 12px; padding: 24px; margin-bottom: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08); border: 1px solid #e6e9ef;
         }
-        .status { padding: 8px 16px; border-radius: 16px; font-size: 14px; font-weight: 600; }
-        .status-success { background: #e8f5e8; color: #00ca72; }
-        .status-warning { background: #fff3cd; color: #fdab3d; }
+        
+        .status-indicator { 
+            display: inline-flex; align-items: center; padding: 8px 16px; border-radius: 20px;
+            font-weight: 600; font-size: 14px; gap: 8px;
+        }
+        .status-success { background: #e8f8f0; color: #00ca72; }
+        .status-warning { background: #fff4e6; color: #fdab3d; }
         .status-error { background: #ffe6e6; color: #e2445c; }
         
-        .task-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-        .task-table th { 
-            background: #f6f7fb; padding: 12px; text-align: left; font-weight: 600;
-            border-bottom: 2px solid #e1e5e9; font-size: 14px;
+        .task-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px; margin-top: 20px;
         }
-        .task-table td { 
-            padding: 12px; border-bottom: 1px solid #e1e5e9; font-size: 14px;
+        .task-card {
+            background: white; border-radius: 12px; padding: 24px; 
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06); border: 1px solid #e6e9ef;
+            transition: all 0.3s ease; position: relative; overflow: hidden;
         }
-        .task-table tr:hover { background: #f8f9fa; }
-        .task-name { font-weight: 600; color: #333; }
-        .task-id { font-family: monospace; font-size: 12px; color: #676879; }
+        .task-card:hover {
+            transform: translateY(-4px); 
+            box-shadow: 0 8px 24px rgba(0,115,234,0.15);
+        }
+        .task-card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+            background: linear-gradient(90deg, #0073ea, #00d2ff);
+        }
+        .task-title { 
+            font-size: 18px; font-weight: 700; margin-bottom: 16px; color: #323338;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .task-id { 
+            font-family: 'Monaco', 'Menlo', monospace; font-size: 11px; 
+            color: #676879; background: #f6f7fb; padding: 2px 6px; border-radius: 4px;
+        }
+        .task-meta { font-size: 14px; color: #676879; margin-bottom: 12px; }
+        .task-details { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+        .task-tag { 
+            padding: 6px 12px; border-radius: 16px; font-size: 12px; font-weight: 600;
+            display: inline-flex; align-items: center; gap: 4px;
+        }
+        .task-tag.status { background: #e8f8f0; color: #00ca72; }
+        .task-tag.timeline { background: #e3f2fd; color: #0073ea; }
+        .task-tag.duration { background: #fff4e6; color: #fdab3d; }
+        .task-tag.assignee { background: #f3e5f5; color: #9c27b0; }
         
-        button {
-            background: #0073ea; color: white; border: none; padding: 12px 20px;
-            border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;
+        .btn {
+            display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px;
+            border-radius: 8px; font-weight: 600; font-size: 14px; border: none;
+            cursor: pointer; transition: all 0.2s; text-decoration: none;
         }
-        button:hover { background: #005bb5; }
+        .btn-primary { background: #0073ea; color: white; }
+        .btn-primary:hover { background: #005bb5; transform: translateY(-2px); }
+        .btn-secondary { background: #e6e9ef; color: #676879; }
+        .btn-secondary:hover { background: #d0d4d9; }
+        
+        .loading-state {
+            text-align: center; padding: 80px 20px;
+        }
+        .spinner {
+            width: 48px; height: 48px; margin: 0 auto 24px;
+            border: 4px solid #e6e9ef; border-radius: 50%;
+            border-top-color: #0073ea; animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .alert {
+            padding: 20px 24px; border-radius: 12px; margin: 20px 0; font-size: 15px;
+            border-left: 4px solid; display: flex; align-items: flex-start; gap: 16px;
+        }
+        .alert-success { background: #e8f8f0; border-color: #00ca72; color: #1b5e20; }
+        .alert-info { background: #e3f2fd; border-color: #0073ea; color: #1565c0; }
+        .alert-warning { background: #fff4e6; border-color: #fdab3d; color: #ef6c00; }
+        .alert-error { background: #ffe6e6; border-color: #e2445c; color: #c62828; }
         
         .debug-log { 
-            background: #1a1a1a; color: #00ff41; padding: 16px; font-family: monospace;
-            font-size: 12px; border-radius: 6px; max-height: 300px; overflow-y: auto;
-            white-space: pre-wrap;
+            background: #1a1a1a; color: #00ff41; padding: 20px; border-radius: 12px;
+            font-family: 'Monaco', 'Menlo', monospace; font-size: 13px; line-height: 1.6;
+            max-height: 400px; overflow-y: auto; white-space: pre-wrap;
         }
         
-        .loading { text-align: center; padding: 40px; }
-        .spinner { 
-            border: 3px solid #f3f3f3; border-radius: 50%; border-top: 3px solid #0073ea;
-            width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 0 auto;
+        .stats-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px; margin: 20px 0;
         }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .stat-item {
+            background: #f6f7fb; padding: 16px; border-radius: 8px; text-align: center;
+        }
+        .stat-number { font-size: 24px; font-weight: 700; color: #0073ea; }
+        .stat-label { font-size: 12px; color: #676879; text-transform: uppercase; }
+        
+        .empty-state {
+            text-align: center; padding: 60px 20px;
+            background: linear-gradient(135deg, #f6f7fb 0%, #e3f2fd 100%);
+            border-radius: 12px; margin: 20px 0;
+        }
+        .empty-state h3 { color: #323338; margin-bottom: 8px; }
+        .empty-state p { color: #676879; margin: 0; }
+        
+        @media (max-width: 768px) {
+            .task-grid { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .header h1 { font-size: 24px; }
+            .task-card { padding: 20px; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>📋 My Monday.com Board Tasks</h1>
-            <p>Board ID: <span id="boardIdDisplay">Loading...</span></p>
+            <h1>📋 Monday.com Board Tasks</h1>
+            <p>Real-time task data from board: <span id="boardDisplay">Loading...</span></p>
         </div>
 
         <!-- Connection Status -->
         <div class="card">
-            <h2>🔗 Connection Status</h2>
+            <h2 style="margin: 0 0 16px 0; color: #323338; display: flex; align-items: center; gap: 8px;">
+                🔗 Connection Status
+            </h2>
             <div id="connectionStatus">
-                <span class="status status-warning">Connecting to Monday.com...</span>
+                <div class="status-indicator status-warning">
+                    ⏳ Initializing connection to Monday.com...
+                </div>
             </div>
-            <div style="margin-top: 16px;">
-                <button onclick="loadTasks()">🔄 Load My Tasks</button>
-                <button onclick="testAPI()" style="background: #6200ea;">🧪 Test API</button>
-            </div>
-        </div>
-
-        <!-- Tasks Display -->
-        <div id="tasksSection" class="card" style="display: none;">
-            <h2>📝 My Tasks</h2>
-            <p id="tasksSummary">Loading tasks from your Monday.com board...</p>
             
-            <table class="task-table">
-                <thead>
-                    <tr>
-                        <th>Task Name</th>
-                        <th>Monday.com ID</th>
-                        <th>Status</th>
-                        <th>Timeline</th>
-                        <th>Duration</th>
-                        <th>Assignee</th>
-                    </tr>
-                </thead>
-                <tbody id="tasksTableBody">
-                    <tr>
-                        <td colspan="6" class="loading">
-                            <div class="spinner"></div>
-                            <p>Loading your tasks...</p>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+            <div class="stats-grid" id="statsGrid" style="display: none;">
+                <div class="stat-item">
+                    <div class="stat-number" id="boardIdStat">--</div>
+                    <div class="stat-label">Board ID</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="taskCountStat">--</div>
+                    <div class="stat-label">Tasks Found</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="sdkStatusStat">--</div>
+                    <div class="stat-label">SDK Status</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="userIdStat">--</div>
+                    <div class="stat-label">User ID</div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap;">
+                <button class="btn btn-primary" onclick="loadTasks()">
+                    🔄 Refresh Tasks
+                </button>
+                <button class="btn btn-secondary" onclick="toggleDebug()">
+                    🐛 Debug Info
+                </button>
+                <button class="btn btn-secondary" onclick="testSDK()">
+                    🧪 Test SDK
+                </button>
+            </div>
         </div>
 
-        <!-- Debug Information -->
-        <div class="card">
-            <h2>🐛 Debug Information</h2>
-            <div id="debugLog" class="debug-log">Starting Monday.com task loader...\n</div>
-            <button onclick="clearLog()" style="background: #676879; margin-top: 12px;">Clear Log</button>
+        <!-- Tasks Section -->
+        <div class="card" id="tasksSection">
+            <h2 style="margin: 0 0 16px 0; color: #323338;">📝 Your Monday.com Tasks</h2>
+            <div id="tasksContent">
+                <div class="loading-state">
+                    <div class="spinner"></div>
+                    <h3>Loading your tasks...</h3>
+                    <p>Connecting to Monday.com and retrieving your board data</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Debug Section -->
+        <div class="card" id="debugSection" style="display: none;">
+            <h2 style="margin: 0 0 16px 0; color: #323338;">🐛 Debug Information</h2>
+            <div class="debug-log" id="debugLog">Initializing Monday.com connection...\n</div>
+            <button class="btn btn-secondary" onclick="clearDebugLog()" style="margin-top: 12px;">
+                🗑️ Clear Log
+            </button>
         </div>
     </div>
 
     <script>
-        // Safe logging function
-        function log(message, type = 'info') {
-            const timestamp = new Date().toLocaleTimeString();
-            const logEl = document.getElementById('debugLog');
-            if (logEl) {
-                logEl.textContent += `[${timestamp}] ${message}\n`;
-                logEl.scrollTop = logEl.scrollHeight;
+        // Enhanced logger for debugging
+        const logger = {
+            log(message, type = 'info') {
+                const timestamp = new Date().toISOString().substring(11, 23);
+                const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'warn' ? '⚠️' : 'ℹ️';
+                const logEntry = `[${timestamp}] ${prefix} ${message}`;
+                
+                // Update debug log
+                const debugLog = document.getElementById('debugLog');
+                if (debugLog) {
+                    debugLog.textContent += logEntry + '\n';
+                    debugLog.scrollTop = debugLog.scrollHeight;
+                }
+                
+                // Safe console logging
+                try {
+                    console.log(`[Monday App] ${message}`);
+                } catch (e) {
+                    // Ignore console errors in restricted environments
+                }
             }
-            try {
-                console.log(`[Monday Tasks] ${message}`);
-            } catch (e) { /* Ignore console errors */ }
+        };
+
+        // Global state
+        let mondaySDK = null;
+        let boardContext = null;
+        let debugVisible = false;
+
+        // Wait for Monday.com to inject the SDK
+        function waitForMondaySDK() {
+            return new Promise((resolve, reject) => {
+                let attempts = 0;
+                const maxAttempts = 20; // 10 seconds total
+                
+                const checkSDK = () => {
+                    attempts++;
+                    logger.log(`SDK check attempt ${attempts}/${maxAttempts}`);
+                    
+                    // Check if Monday SDK is available (injected by Monday.com)
+                    if (typeof window.mondaySDK !== 'undefined') {
+                        logger.log('✅ Monday SDK found!', 'success');
+                        mondaySDK = window.mondaySDK();
+                        resolve(true);
+                        return;
+                    }
+                    
+                    // Also check parent window (sometimes SDK is in parent)
+                    try {
+                        if (window.parent && typeof window.parent.mondaySDK !== 'undefined') {
+                            logger.log('✅ Monday SDK found in parent window!', 'success');
+                            mondaySDK = window.parent.mondaySDK();
+                            resolve(true);
+                            return;
+                        }
+                    } catch (e) {
+                        // Cross-origin access blocked, this is normal
+                        logger.log(`Parent window access blocked (normal): ${e.message}`);
+                    }
+                    
+                    if (attempts >= maxAttempts) {
+                        logger.log('❌ Monday SDK not found after all attempts', 'error');
+                        reject(new Error('Monday SDK not available'));
+                        return;
+                    }
+                    
+                    // Try again after 500ms
+                    setTimeout(checkSDK, 500);
+                };
+                
+                checkSDK();
+            });
         }
 
-        function clearLog() {
-            document.getElementById('debugLog').textContent = 'Log cleared.\n';
-        }
-
-        // Get Monday.com context from URL
-        function getMondayContext() {
+        // Get board context from URL parameters
+        function extractBoardContext() {
             const urlParams = new URLSearchParams(window.location.search);
-            const context = {
+            boardContext = {
                 boardId: urlParams.get('boardId'),
                 sessionToken: urlParams.get('sessionToken'),
                 userId: urlParams.get('userId'),
                 accountId: urlParams.get('accountId'),
-                instanceId: urlParams.get('instanceId')
+                instanceId: urlParams.get('instanceId'),
+                boardViewId: urlParams.get('boardViewId')
             };
             
-            log(`Board ID: ${context.boardId}`);
-            log(`Session Token: ${context.sessionToken ? 'Present' : 'Missing'}`);
-            log(`User ID: ${context.userId}`);
-            log(`Account ID: ${context.accountId}`);
-            
-            return context;
+            logger.log(`Board context extracted: ${JSON.stringify(boardContext, null, 2)}`);
+            return boardContext;
         }
 
-        // Update connection status
-        function updateConnectionStatus(message, type = 'info') {
+        // Update UI with connection status
+        function updateConnectionStatus(message, type = 'info', showStats = false) {
             const statusEl = document.getElementById('connectionStatus');
+            const statsGrid = document.getElementById('statsGrid');
+            const boardDisplay = document.getElementById('boardDisplay');
+            
             const className = type === 'success' ? 'status-success' : 
                            type === 'error' ? 'status-error' : 
-                           type === 'warning' ? 'status-warning' : 'status-info';
+                           'status-warning';
             
-            statusEl.innerHTML = `<span class="${className}">${message}</span>`;
-            log(message);
+            statusEl.innerHTML = `<div class="status-indicator ${className}">${message}</div>`;
+            
+            if (showStats && boardContext) {
+                // Update stats
+                document.getElementById('boardIdStat').textContent = boardContext.boardId || '--';
+                document.getElementById('sdkStatusStat').textContent = mondaySDK ? '✅' : '❌';
+                document.getElementById('userIdStat').textContent = boardContext.userId || '--';
+                
+                boardDisplay.textContent = boardContext.boardId || 'Unknown';
+                statsGrid.style.display = 'grid';
+            }
         }
 
-        // Try to access Monday.com API using session token
-        async function loadTasksWithToken(boardId, sessionToken) {
-            log('Attempting to load tasks using session token...');
+        // Initialize the Monday.com connection
+        async function initializeConnection() {
+            logger.log('🚀 Starting Monday.com connection initialization...');
+            
+            // Extract context from URL
+            extractBoardContext();
+            
+            if (!boardContext.boardId) {
+                updateConnectionStatus('❌ No board ID found - app not opened from Monday.com board', 'error');
+                showError('This app must be opened from a Monday.com board to work properly.');
+                return;
+            }
+            
+            updateConnectionStatus('🔄 Waiting for Monday.com SDK...', 'warning');
             
             try {
-                // Use Monday.com GraphQL API directly with session token
+                // Wait for Monday.com to inject the SDK
+                await waitForMondaySDK();
+                
+                updateConnectionStatus('✅ Connected to Monday.com!', 'success', true);
+                
+                // Test SDK with context
+                await testSDKContext();
+                
+                // Automatically load tasks
+                setTimeout(() => loadTasks(), 1000);
+                
+            } catch (error) {
+                logger.log(`❌ Connection failed: ${error.message}`, 'error');
+                updateConnectionStatus(`❌ Connection failed: ${error.message}`, 'error');
+                showError(`Unable to connect to Monday.com: ${error.message}`);
+            }
+        }
+
+        // Test SDK context functionality
+        async function testSDKContext() {
+            if (!mondaySDK) return;
+            
+            try {
+                logger.log('🧪 Testing SDK context...');
+                const context = await mondaySDK.get('context');
+                logger.log(`SDK context: ${JSON.stringify(context, null, 2)}`, 'success');
+                
+                // Update board context with SDK data if available
+                if (context.data) {
+                    Object.assign(boardContext, context.data);
+                    updateConnectionStatus('✅ SDK context received!', 'success', true);
+                }
+                
+            } catch (error) {
+                logger.log(`⚠️ SDK context test warning: ${error.message}`, 'warn');
+                // Don't fail completely, URL parameters might be enough
+            }
+        }
+
+        // Load tasks from Monday.com board
+        async function loadTasks() {
+            if (!mondaySDK || !boardContext.boardId) {
+                showError('Cannot load tasks: SDK not available or no board ID');
+                return;
+            }
+            
+            logger.log(`📥 Loading tasks from board ${boardContext.boardId}...`);
+            showTaskLoading();
+            
+            try {
                 const query = `
                     query {
-                        boards(ids: [${boardId}]) {
+                        boards(ids: [${boardContext.boardId}]) {
                             id
                             name
                             description
@@ -192,310 +410,230 @@
                         }
                     }
                 `;
-
-                const response = await fetch('https://api.monday.com/v2', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${sessionToken}`,
-                    },
-                    body: JSON.stringify({ query })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-
-                const data = await response.json();
-                log(`API Response: ${JSON.stringify(data, null, 2)}`);
-
-                if (data.errors) {
-                    throw new Error(`GraphQL errors: ${JSON.stringify(data.errors)}`);
-                }
-
-                if (data.data && data.data.boards && data.data.boards.length > 0) {
-                    const board = data.data.boards[0];
-                    log(`✅ Board loaded: "${board.name}" with ${board.items_count} items`);
-                    displayTasks(board);
-                    return true;
-                } else {
-                    throw new Error('No board data found in response');
-                }
-
-            } catch (error) {
-                log(`❌ API request failed: ${error.message}`);
-                throw error;
-            }
-        }
-
-        // Try to access Monday SDK
-        async function loadTasksWithSDK(boardId) {
-            log('Attempting to load tasks using Monday SDK...');
-            
-            // Try to find Monday SDK
-            const sdkSources = [
-                () => window.mondaySDK,
-                () => window.monday,
-                () => parent?.mondaySDK,
-                () => parent?.monday
-            ];
-
-            for (let i = 0; i < sdkSources.length; i++) {
-                try {
-                    const sdkFunc = sdkSources[i]();
-                    if (sdkFunc && typeof sdkFunc === 'function') {
-                        log(`Found Monday SDK via method ${i + 1}`);
-                        
-                        const monday = sdkFunc();
-                        const query = `
-                            query {
-                                boards(ids: [${boardId}]) {
-                                    id
-                                    name
-                                    items {
-                                        id
-                                        name
-                                        column_values {
-                                            title
-                                            text
-                                            type
-                                            value
-                                        }
-                                    }
-                                }
-                            }
-                        `;
-                        
-                        const response = await monday.api(query);
-                        log(`SDK API Response: ${JSON.stringify(response, null, 2)}`);
-                        
-                        if (response.data && response.data.boards && response.data.boards.length > 0) {
-                            const board = response.data.boards[0];
-                            log(`✅ Board loaded via SDK: "${board.name}"`);
-                            displayTasks(board);
-                            return true;
-                        }
-                    }
-                } catch (e) {
-                    log(`SDK method ${i + 1} failed: ${e.message}`);
-                }
-            }
-            
-            throw new Error('Monday SDK not accessible');
-        }
-
-        // Display the actual tasks from Monday.com
-        function displayTasks(board) {
-            log(`Displaying ${board.items ? board.items.length : 0} tasks from board: ${board.name}`);
-            
-            const tasksSection = document.getElementById('tasksSection');
-            const tasksSummary = document.getElementById('tasksSummary');
-            const tasksTableBody = document.getElementById('tasksTableBody');
-            
-            // Update summary
-            tasksSummary.textContent = `Loaded ${board.items ? board.items.length : 0} tasks from "${board.name}"`;
-            
-            // Clear loading state
-            tasksTableBody.innerHTML = '';
-            
-            if (board.items && board.items.length > 0) {
-                // Display each actual task
-                board.items.forEach((item, index) => {
-                    log(`Processing task ${index + 1}: "${item.name}" (ID: ${item.id})`);
-                    
-                    // Extract information from columns
-                    let status = 'No status';
-                    let timeline = 'No timeline';
-                    let duration = 'No duration';
-                    let assignee = 'Unassigned';
-                    
-                    if (item.column_values && item.column_values.length > 0) {
-                        item.column_values.forEach(col => {
-                            log(`  Column: ${col.title} (${col.type}) = ${col.text || col.value}`);
-                            
-                            if (col.type === 'status' && col.text) {
-                                status = col.text;
-                            } else if (col.type === 'timeline' && col.text) {
-                                timeline = col.text;
-                                // Try to extract duration from timeline
-                                if (col.value) {
-                                    try {
-                                        const timelineData = JSON.parse(col.value);
-                                        if (timelineData.from && timelineData.to) {
-                                            const start = new Date(timelineData.from);
-                                            const end = new Date(timelineData.to);
-                                            const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
-                                            if (diffDays > 0) {
-                                                duration = `${diffDays} days`;
-                                            }
-                                        }
-                                    } catch (e) {
-                                        log(`    Failed to parse timeline: ${e.message}`);
-                                    }
-                                }
-                            } else if (col.type === 'numeric' && col.value && 
-                                      (col.title.toLowerCase().includes('duration') || 
-                                       col.title.toLowerCase().includes('days') ||
-                                       col.title.toLowerCase().includes('estimate'))) {
-                                duration = `${col.value} days`;
-                            } else if (col.type === 'people' && col.text) {
-                                assignee = col.text;
-                            } else if (col.type === 'text' && col.text && 
-                                      (col.title.toLowerCase().includes('duration') ||
-                                       col.title.toLowerCase().includes('days'))) {
-                                duration = col.text;
-                            }
-                        });
-                    }
-                    
-                    // Create table row for this actual task
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>
-                            <div class="task-name">${item.name}</div>
-                            <div class="task-id">ID: ${item.id}</div>
-                        </td>
-                        <td class="task-id">${item.id}</td>
-                        <td>${status}</td>
-                        <td>${timeline}</td>
-                        <td><strong>${duration}</strong></td>
-                        <td>${assignee}</td>
-                    `;
-                    
-                    tasksTableBody.appendChild(row);
-                });
                 
-                updateConnectionStatus(`✅ Successfully loaded ${board.items.length} real tasks from your Monday.com board`, 'success');
-            } else {
-                tasksTableBody.innerHTML = `
-                    <tr><td colspan="6" style="text-align: center; padding: 40px; color: #676879;">
-                        No tasks found in this board. Try adding some tasks to your Monday.com board first.
-                    </td></tr>
-                `;
-                updateConnectionStatus('⚠️ Board connected but no tasks found', 'warning');
+                logger.log('📤 Sending GraphQL query via Monday SDK...');
+                const response = await mondaySDK.api(query);
+                logger.log(`📥 API response received: ${JSON.stringify(response, null, 2)}`, 'success');
+                
+                if (response.errors && response.errors.length > 0) {
+                    throw new Error(`GraphQL errors: ${response.errors.map(e => e.message).join(', ')}`);
+                }
+                
+                if (!response.data || !response.data.boards || response.data.boards.length === 0) {
+                    throw new Error('No board data received from Monday.com API');
+                }
+                
+                const board = response.data.boards[0];
+                logger.log(`✅ Board loaded: "${board.name}" with ${board.items_count} items`, 'success');
+                
+                // Update task count stat
+                document.getElementById('taskCountStat').textContent = board.items ? board.items.length : 0;
+                
+                displayTasks(board);
+                
+            } catch (error) {
+                logger.log(`❌ Failed to load tasks: ${error.message}`, 'error');
+                showError(`Failed to load tasks: ${error.message}`);
             }
-            
-            // Show the tasks section
-            tasksSection.style.display = 'block';
         }
 
-        // Main function to load tasks
-        async function loadTasks() {
-            log('=== STARTING REAL TASK LOADING ===');
+        // Display tasks in the UI
+        function displayTasks(board) {
+            const tasksContent = document.getElementById('tasksContent');
             
-            const context = getMondayContext();
-            
-            if (!context.boardId) {
-                updateConnectionStatus('❌ No board ID found - app not opened from a Monday.com board', 'error');
+            if (!board.items || board.items.length === 0) {
+                tasksContent.innerHTML = `
+                    <div class="empty-state">
+                        <h3>📭 No Tasks Found</h3>
+                        <p>Your board "${board.name}" doesn't have any items yet.<br>
+                        Try adding some tasks to your Monday.com board first.</p>
+                    </div>
+                `;
                 return;
             }
             
-            // Show board ID
-            document.getElementById('boardIdDisplay').textContent = context.boardId;
-            
-            updateConnectionStatus('🔄 Loading your actual Monday.com tasks...', 'warning');
-            
-            // Try multiple methods to get real task data
-            let success = false;
-            
-            // Method 1: Try Monday SDK
-            if (!success) {
-                try {
-                    log('Trying Method 1: Monday SDK');
-                    await loadTasksWithSDK(context.boardId);
-                    success = true;
-                } catch (error) {
-                    log(`Method 1 failed: ${error.message}`);
-                }
-            }
-            
-            // Method 2: Try direct API with session token
-            if (!success && context.sessionToken) {
-                try {
-                    log('Trying Method 2: Direct API with session token');
-                    await loadTasksWithToken(context.boardId, context.sessionToken);
-                    success = true;
-                } catch (error) {
-                    log(`Method 2 failed: ${error.message}`);
-                }
-            }
-            
-            if (!success) {
-                updateConnectionStatus('❌ Could not load tasks - Monday.com API not accessible from this environment', 'error');
-                log('All methods failed to load real tasks');
+            // Process each task
+            const taskCards = board.items.map(item => {
+                logger.log(`Processing task: "${item.name}" (ID: ${item.id})`);
                 
-                // Show helpful message
-                document.getElementById('tasksSection').style.display = 'block';
-                document.getElementById('tasksSummary').textContent = 'Unable to load tasks - API access limitations';
-                document.getElementById('tasksTableBody').innerHTML = `
-                    <tr><td colspan="6" style="padding: 20px; text-align: center;">
-                        <div style="color: #e2445c; font-weight: 600;">⚠️ Cannot Access Monday.com API</div>
-                        <div style="margin-top: 8px; color: #676879; font-size: 13px;">
-                            Your app is connected (Board ID: ${context.boardId}) but cannot retrieve task data due to API restrictions in this environment.
-                            <br><br>
-                            <strong>To see your real tasks:</strong><br>
-                            • The app needs to be properly published in Monday.com<br>
-                            • Or use Monday.com's hosting environment<br>
-                            • Current environment has cross-origin restrictions
+                // Extract data from columns
+                let status = null;
+                let timeline = null;
+                let duration = null;
+                let assignee = null;
+                const additionalColumns = [];
+                
+                item.column_values.forEach(col => {
+                    if (!col.title) return;
+                    
+                    logger.log(`  Column: ${col.title} (${col.type}) = ${col.text || col.value || 'empty'}`);
+                    
+                    switch (col.type) {
+                        case 'status':
+                            if (col.text) status = col.text;
+                            break;
+                        case 'timeline':
+                            if (col.text) timeline = col.text;
+                            if (col.value) {
+                                try {
+                                    const timelineData = JSON.parse(col.value);
+                                    if (timelineData.from && timelineData.to) {
+                                        const start = new Date(timelineData.from);
+                                        const end = new Date(timelineData.to);
+                                        const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+                                        if (days > 0) duration = `${days} days`;
+                                    }
+                                } catch (e) {
+                                    logger.log(`    Timeline parse error: ${e.message}`, 'warn');
+                                }
+                            }
+                            break;
+                        case 'people':
+                            if (col.text) assignee = col.text;
+                            break;
+                        case 'numeric':
+                            if (col.value && (col.title.toLowerCase().includes('duration') || 
+                                            col.title.toLowerCase().includes('days') ||
+                                            col.title.toLowerCase().includes('estimate'))) {
+                                duration = `${col.value} days`;
+                            }
+                            break;
+                        default:
+                            if (col.text && col.text.trim()) {
+                                additionalColumns.push({ title: col.title, value: col.text });
+                            }
+                    }
+                });
+                
+                return `
+                    <div class="task-card">
+                        <div class="task-title">
+                            📋 ${item.name}
+                            <span class="task-id">${item.id}</span>
                         </div>
-                    </td></tr>
+                        <div class="task-meta">
+                            Created: ${new Date(item.created_at).toLocaleDateString()}
+                            ${item.updated_at ? `• Updated: ${new Date(item.updated_at).toLocaleDateString()}` : ''}
+                        </div>
+                        <div class="task-details">
+                            ${status ? `<span class="task-tag status">📊 ${status}</span>` : ''}
+                            ${duration ? `<span class="task-tag duration">⏱️ ${duration}</span>` : ''}
+                            ${timeline ? `<span class="task-tag timeline">📅 ${timeline}</span>` : ''}
+                            ${assignee ? `<span class="task-tag assignee">👤 ${assignee}</span>` : ''}
+                        </div>
+                        ${additionalColumns.length > 0 ? `
+                            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e6e9ef;">
+                                <div style="font-size: 12px; color: #676879; margin-bottom: 8px; font-weight: 600;">Additional Information:</div>
+                                ${additionalColumns.map(col => `
+                                    <div style="font-size: 13px; margin-bottom: 4px;">
+                                        <strong>${col.title}:</strong> ${col.value}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
                 `;
-            }
+            }).join('');
+            
+            tasksContent.innerHTML = `
+                <div class="alert alert-success">
+                    <div style="font-size: 18px;">✅</div>
+                    <div>
+                        <strong>Tasks loaded successfully!</strong><br>
+                        Found ${board.items.length} tasks from "${board.name}". 
+                        This is your real Monday.com board data.
+                    </div>
+                </div>
+                <div class="task-grid">
+                    ${taskCards}
+                </div>
+            `;
         }
 
-        // Test API connectivity
-        async function testAPI() {
-            log('=== API CONNECTIVITY TEST ===');
-            const context = getMondayContext();
-            
-            if (context.sessionToken) {
-                try {
-                    const response = await fetch('https://api.monday.com/v2', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${context.sessionToken}`,
-                        },
-                        body: JSON.stringify({
-                            query: '{ me { name email } }'
-                        })
-                    });
-                    
-                    log(`API Test Response Status: ${response.status}`);
-                    const data = await response.json();
-                    log(`API Test Response: ${JSON.stringify(data, null, 2)}`);
-                    
-                } catch (error) {
-                    log(`API Test Error: ${error.message}`);
-                }
-            } else {
-                log('No session token available for API test');
-            }
+        // Show loading state
+        function showTaskLoading() {
+            document.getElementById('tasksContent').innerHTML = `
+                <div class="loading-state">
+                    <div class="spinner"></div>
+                    <h3>Loading your Monday.com tasks...</h3>
+                    <p>Retrieving data from board ${boardContext.boardId}</p>
+                </div>
+            `;
         }
 
-        // Initialize the app
-        function initialize() {
-            log('Monday.com Tasks App - Starting...');
-            log(`Current URL: ${window.location.href}`);
-            log(`Running in iframe: ${window !== window.top}`);
+        // Show error state
+        function showError(message) {
+            document.getElementById('tasksContent').innerHTML = `
+                <div class="alert alert-error">
+                    <div style="font-size: 18px;">❌</div>
+                    <div>
+                        <strong>Unable to load tasks</strong><br>
+                        ${message}
+                    </div>
+                </div>
+                <div class="alert alert-info">
+                    <div style="font-size: 16px;">💡</div>
+                    <div>
+                        <strong>Troubleshooting tips:</strong><br>
+                        • Make sure you're opening this app from within Monday.com<br>
+                        • Check that your board contains tasks/items<br>
+                        • Verify the app has proper permissions to read your board<br>
+                        • Try refreshing the page or reopening the app
+                    </div>
+                </div>
+            `;
+        }
+
+        // Test SDK functionality
+        async function testSDK() {
+            if (!mondaySDK) {
+                logger.log('❌ Cannot test SDK - not available', 'error');
+                return;
+            }
             
-            const context = getMondayContext();
-            if (context.boardId) {
-                document.getElementById('boardIdDisplay').textContent = context.boardId;
-                updateConnectionStatus(`✅ Connected to Monday.com Board: ${context.boardId}`, 'success');
+            logger.log('🧪 Testing Monday SDK functionality...');
+            
+            try {
+                // Test various SDK methods
+                const context = await mondaySDK.get('context');
+                logger.log(`Context test: ${JSON.stringify(context, null, 2)}`, 'success');
                 
-                // Automatically try to load tasks
-                setTimeout(() => {
-                    loadTasks();
-                }, 1000);
-            } else {
-                updateConnectionStatus('❌ No Monday.com board context detected', 'error');
+                const settings = await mondaySDK.get('settings');
+                logger.log(`Settings test: ${JSON.stringify(settings, null, 2)}`, 'success');
+                
+                logger.log('✅ SDK tests completed successfully', 'success');
+                
+            } catch (error) {
+                logger.log(`❌ SDK test failed: ${error.message}`, 'error');
             }
         }
 
-        // Start when page loads
+        // Toggle debug visibility
+        function toggleDebug() {
+            debugVisible = !debugVisible;
+            const debugSection = document.getElementById('debugSection');
+            debugSection.style.display = debugVisible ? 'block' : 'none';
+        }
+
+        // Clear debug log
+        function clearDebugLog() {
+            document.getElementById('debugLog').textContent = 'Debug log cleared.\n';
+        }
+
+        // Initialize when page loads
         window.addEventListener('load', function() {
-            setTimeout(initialize, 500);
+            logger.log('🌟 Monday.com Board Tasks App starting...');
+            logger.log(`Environment: ${window !== window.top ? 'iframe' : 'standalone'}`);
+            logger.log(`URL: ${window.location.href}`);
+            logger.log(`User Agent: ${navigator.userAgent.substring(0, 100)}...`);
+            
+            // Give Monday.com time to set up the environment
+            setTimeout(initializeConnection, 1500);
+        });
+
+        // Handle window messages (Monday.com communication)
+        window.addEventListener('message', function(event) {
+            logger.log(`Received message from ${event.origin}: ${JSON.stringify(event.data)}`);
         });
     </script>
 </body>
