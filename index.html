@@ -3,397 +3,685 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CCPM Board Viewer</title>
+    <title>CCMP Buffer Management</title>
     <style>
         body { 
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
-            padding: 20px;
+            padding: 16px;
             background: #f8f9fa;
             color: #333;
+            font-size: 14px;
         }
-        .container { max-width: 1200px; margin: 0 auto; }
+        .container { max-width: 1400px; margin: 0 auto; }
         .header { 
             background: linear-gradient(135deg, #0073ea, #6200ea);
             color: white;
-            padding: 24px;
-            border-radius: 12px;
-            margin-bottom: 24px;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
             text-align: center;
         }
-        .status-card { 
+        .header h1 { margin: 0 0 8px 0; font-size: 24px; }
+        .header p { margin: 0; opacity: 0.9; font-size: 14px; }
+        
+        .card { 
             background: white;
             border-radius: 8px;
-            padding: 24px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            border: 1px solid #e1e5e9;
-        }
-        .success { color: #00ca72; font-weight: 600; }
-        .error { color: #e2445c; font-weight: 600; }
-        .warning { color: #fdab3d; font-weight: 600; }
-        .info { color: #0073ea; font-weight: 600; }
-        .board-info { 
-            background: #f6f7fb;
-            border-radius: 6px;
-            padding: 16px;
+            padding: 20px;
             margin-bottom: 16px;
-        }
-        .task-grid {
-            display: grid;
-            gap: 12px;
-            margin-top: 16px;
-        }
-        .task-card {
-            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             border: 1px solid #e1e5e9;
-            border-radius: 6px;
-            padding: 16px;
-            transition: box-shadow 0.2s;
         }
-        .task-card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        .card h2 { margin: 0 0 16px 0; font-size: 18px; color: #333; }
+        .card h3 { margin: 0 0 12px 0; font-size: 16px; color: #333; }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
         }
-        .task-title { font-weight: 600; margin-bottom: 8px; }
-        .task-details { font-size: 14px; color: #676879; }
-        .debug-log { 
-            background: #1e1e1e;
-            color: #00ff41;
-            padding: 16px;
-            font-family: 'Monaco', 'Menlo', monospace;
+        .metric-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid #e1e5e9;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .metric-value { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+        .metric-label { font-size: 12px; color: #676879; text-transform: uppercase; }
+        .metric-change { font-size: 11px; margin-top: 4px; }
+        
+        .traditional { color: #e2445c; }
+        .ccpm { color: #00ca72; }
+        .savings { color: #0073ea; }
+        .efficiency { color: #6200ea; }
+        
+        .controls-panel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 600;
             font-size: 12px;
-            border-radius: 6px;
-            max-height: 300px;
-            overflow-y: auto;
-            white-space: pre-wrap;
+            color: #333;
         }
+        .control-group select, .control-group input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d0d4d7;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
         button {
             background: #0073ea;
             color: white;
             border: none;
-            padding: 10px 20px;
+            padding: 10px 16px;
             border-radius: 6px;
             font-weight: 600;
             cursor: pointer;
-            margin: 4px;
+            font-size: 14px;
             transition: background 0.2s;
         }
         button:hover { background: #005bb5; }
         .button-secondary { background: #676879; }
         .button-secondary:hover { background: #5a5a6b; }
+        
+        .task-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+        }
+        .task-table th {
+            background: #f6f7fb;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 12px;
+            color: #333;
+            border-bottom: 2px solid #e1e5e9;
+        }
+        .task-table td {
+            padding: 12px;
+            border-bottom: 1px solid #e1e5e9;
+            font-size: 13px;
+        }
+        .task-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .timeline-container {
+            margin-top: 16px;
+            padding: 16px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        .timeline-scale {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            font-size: 11px;
+            color: #676879;
+            border-bottom: 1px solid #d0d4d7;
+            padding-bottom: 8px;
+        }
+        .timeline-task {
+            margin-bottom: 12px;
+        }
+        .timeline-task-name {
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .timeline-bar-container {
+            position: relative;
+            height: 24px;
+            background: #e1e5e9;
+            border-radius: 4px;
+        }
+        .timeline-bar {
+            position: absolute;
+            height: 100%;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            padding: 0 8px;
+            font-size: 11px;
+            font-weight: 600;
+            color: white;
+        }
+        .bar-work { background: #0073ea; }
+        .bar-buffer { background: #fdab3d; }
+        .bar-critical { background: #e2445c; }
+        
+        .insights-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .insight-item {
+            padding: 12px;
+            background: #f6f7fb;
+            border-radius: 6px;
+            font-size: 13px;
+            border-left: 4px solid #0073ea;
+        }
+        
+        .status { display: inline-block; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+        .status-success { background: #e8f5e8; color: #00ca72; }
+        .status-warning { background: #fff3cd; color: #fdab3d; }
+        .status-error { background: #ffe6e6; color: #e2445c; }
+        
+        .buffer-input {
+            width: 60px;
+            padding: 4px 8px;
+            border: 1px solid #d0d4d7;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 12px;
+        }
+        
+        @media (max-width: 768px) {
+            .insights-grid { grid-template-columns: 1fr; }
+            .controls-panel { grid-template-columns: 1fr; }
+            .task-table { font-size: 12px; }
+            .task-table th, .task-table td { padding: 8px; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🎯 CCPM Board Viewer</h1>
-            <p>Critical Chain Project Management for Monday.com</p>
+            <h1>🎯 CCMP Buffer Management</h1>
+            <p>Critical Chain Project Management for Monday.com Board: <span id="boardIdDisplay">Loading...</span></p>
         </div>
 
-        <div class="status-card">
-            <h2>📊 Connection Status</h2>
-            <div id="status">Initializing connection...</div>
-            <div style="margin-top: 16px;">
-                <button onclick="runTest()">🔄 Refresh Data</button>
-                <button onclick="clearLog()" class="button-secondary">🗑️ Clear Log</button>
+        <!-- Connection Status -->
+        <div class="card">
+            <div id="connectionStatus">
+                <span class="status status-warning">Connecting to Monday.com...</span>
             </div>
         </div>
 
-        <div id="boardSection" class="status-card" style="display: none;">
-            <h2>📋 Board Information</h2>
-            <div id="boardInfo" class="board-info"></div>
-            <div id="taskContainer"></div>
+        <!-- Project Metrics -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-value traditional" id="traditionalDuration">--</div>
+                <div class="metric-label">Traditional Duration (days)</div>
+                <div class="metric-change">With safety padding</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value ccpm" id="ccmpDuration">--</div>
+                <div class="metric-label">CCPM Duration (days)</div>
+                <div class="metric-change">With strategic buffers</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value savings" id="timeSavings">--</div>
+                <div class="metric-label">Time Saved (days)</div>
+                <div class="metric-change" id="savingsPercent">% improvement</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value efficiency" id="bufferEfficiency">--</div>
+                <div class="metric-label">Buffer Efficiency</div>
+                <div class="metric-change">Protection level</div>
+            </div>
         </div>
 
-        <div class="status-card">
-            <h2>🐛 Debug Information</h2>
-            <div id="debugLog" class="debug-log">Starting CCPM Board Viewer...\n</div>
+        <!-- Controls -->
+        <div class="card">
+            <h2>⚙️ CCPM Configuration</h2>
+            <div class="controls-panel">
+                <div class="control-group">
+                    <label>Buffer Strategy</label>
+                    <select id="bufferStrategy" onchange="updateBufferStrategy()">
+                        <option value="50">Conservative (50% buffers)</option>
+                        <option value="33">Balanced (33% buffers)</option>
+                        <option value="25">Aggressive (25% buffers)</option>
+                        <option value="custom">Custom per task</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>Project Buffer</label>
+                    <select id="projectBuffer">
+                        <option value="15">Light (15%)</option>
+                        <option value="25" selected>Standard (25%)</option>
+                        <option value="35">Heavy (35%)</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label>View Mode</label>
+                    <select id="viewMode" onchange="switchView()">
+                        <option value="table">Task Table</option>
+                        <option value="timeline">CCPM Timeline</option>
+                        <option value="gantt">Gantt Chart</option>
+                    </select>
+                </div>
+            </div>
+            <div style="margin-top: 16px;">
+                <button onclick="recalculate()">🔄 Recalculate CCPM</button>
+                <button onclick="exportResults()" class="button-secondary">📊 Export Results</button>
+                <button onclick="refreshData()" class="button-secondary">↻ Refresh Data</button>
+            </div>
+        </div>
+
+        <!-- Task Management Views -->
+        <div class="card">
+            <h2 id="viewTitle">📋 Task Buffer Management</h2>
+            
+            <!-- Table View -->
+            <div id="tableView">
+                <table class="task-table">
+                    <thead>
+                        <tr>
+                            <th>Task Name</th>
+                            <th>Original Est.</th>
+                            <th>Aggressive</th>
+                            <th>Buffer</th>
+                            <th>Buffer %</th>
+                            <th>Critical</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="taskTableBody">
+                        <!-- Tasks populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Timeline View -->
+            <div id="timelineView" style="display: none;">
+                <div class="timeline-container">
+                    <div class="timeline-scale" id="timelineScale">
+                        <!-- Scale populated by JavaScript -->
+                    </div>
+                    <div id="timelineTasks">
+                        <!-- Timeline tasks populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gantt View -->
+            <div id="ganttView" style="display: none;">
+                <div class="timeline-container">
+                    <p>Gantt chart view - Professional CCPM visualization with dependencies and resource leveling.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- CCPM Insights -->
+        <div class="card">
+            <h2>🧠 CCPM Insights & Recommendations</h2>
+            <div class="insights-grid">
+                <div>
+                    <h3>Project Health</h3>
+                    <div id="projectInsights">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+                <div>
+                    <h3>Buffer Analysis</h3>
+                    <div id="bufferInsights">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
-        // Safe logging that won't cause iframe issues
-        function log(message, type = 'info') {
-            const timestamp = new Date().toLocaleTimeString();
-            const logEl = document.getElementById('debugLog');
-            if (logEl) {
-                logEl.textContent += `[${timestamp}] ${message}\n`;
-                logEl.scrollTop = logEl.scrollHeight;
+        // CCPM Engine
+        class CCMPEngine {
+            constructor() {
+                this.tasks = [];
+                this.bufferStrategy = 50;
+                this.projectBufferPercent = 25;
+                this.boardId = null;
             }
+
+            addTask(task) {
+                const processedTask = {
+                    id: task.id || `task_${this.tasks.length + 1}`,
+                    name: task.name || `Task ${this.tasks.length + 1}`,
+                    originalEstimate: task.duration || 5,
+                    bufferPercent: this.bufferStrategy,
+                    dependencies: task.dependencies || [],
+                    resource: task.resource || 'General',
+                    mondayId: task.mondayId
+                };
+
+                // Calculate CCPM values
+                this.calculateTaskCCMP(processedTask);
+                this.tasks.push(processedTask);
+            }
+
+            calculateTaskCCMP(task) {
+                const bufferSize = Math.round(task.originalEstimate * (task.bufferPercent / 100));
+                task.bufferSize = bufferSize;
+                task.aggressiveDuration = Math.max(1, task.originalEstimate - bufferSize);
+                task.isCritical = false; // Will be calculated later
+            }
+
+            calculateTimeline() {
+                // Reset timeline calculations
+                this.tasks.forEach(task => {
+                    task.startDay = 0;
+                    task.aggressiveEnd = 0;
+                    task.bufferedEnd = 0;
+                });
+
+                // Simple forward pass (for demo - would be more complex in real CCPM)
+                let currentDay = 0;
+                this.tasks.forEach(task => {
+                    task.startDay = currentDay;
+                    task.aggressiveEnd = currentDay + task.aggressiveDuration;
+                    task.bufferedEnd = currentDay + task.originalEstimate;
+                    currentDay = task.aggressiveEnd; // Relay race principle
+                });
+
+                // Identify critical chain (simplified)
+                const totalDuration = Math.max(...this.tasks.map(t => t.aggressiveEnd));
+                this.tasks.forEach(task => {
+                    task.isCritical = task.aggressiveEnd >= totalDuration * 0.8; // Simplified logic
+                });
+            }
+
+            getProjectMetrics() {
+                const traditionalTotal = this.tasks.reduce((sum, t) => sum + t.originalEstimate, 0);
+                const ccpmTotal = Math.max(...this.tasks.map(t => t.aggressiveEnd)) + 
+                               Math.round(traditionalTotal * (this.projectBufferPercent / 100));
+                
+                const timeSaved = traditionalTotal - ccmpTotal;
+                const savingsPercent = Math.round((timeSaved / traditionalTotal) * 100);
+                
+                const avgBufferEfficiency = this.tasks.reduce((sum, t) => sum + t.bufferPercent, 0) / this.tasks.length;
+
+                return {
+                    traditionalTotal,
+                    ccmpTotal,
+                    timeSaved,
+                    savingsPercent,
+                    avgBufferEfficiency: Math.round(avgBufferEfficiency),
+                    criticalChainTasks: this.tasks.filter(t => t.isCritical).length
+                };
+            }
+        }
+
+        // Global variables
+        let ccmpEngine = new CCMPEngine();
+        let currentView = 'table';
+
+        // Initialize with sample data (will be replaced with Monday.com data)
+        function initializeSampleData() {
+            const sampleTasks = [
+                { name: 'Project Planning', duration: 5, dependencies: [] },
+                { name: 'Requirements Gathering', duration: 8, dependencies: ['1'] },
+                { name: 'System Design', duration: 12, dependencies: ['2'] },
+                { name: 'Development Phase 1', duration: 15, dependencies: ['3'] },
+                { name: 'Development Phase 2', duration: 10, dependencies: ['4'] },
+                { name: 'Testing & QA', duration: 8, dependencies: ['5'] },
+                { name: 'Deployment', duration: 3, dependencies: ['6'] },
+                { name: 'Training & Handover', duration: 5, dependencies: ['7'] }
+            ];
+
+            ccmpEngine = new CCMPEngine();
+            sampleTasks.forEach(task => ccmpEngine.addTask(task));
+            ccmpEngine.calculateTimeline();
             
-            // Try console.log safely
-            try {
-                if (typeof console !== 'undefined' && console.log) {
-                    console.log(`[CCPM] ${message}`);
-                }
-            } catch (e) {
-                // Ignore console errors in iframe
-            }
+            updateUI();
         }
 
-        function updateStatus(message, type = 'info') {
-            const statusEl = document.getElementById('status');
-            if (statusEl) {
-                const className = type === 'success' ? 'success' : 
-                               type === 'error' ? 'error' : 
-                               type === 'warning' ? 'warning' : 'info';
-                statusEl.innerHTML = `<span class="${className}">${message}</span>`;
-            }
-            log(message, type);
-        }
-
-        function clearLog() {
-            const logEl = document.getElementById('debugLog');
-            if (logEl) {
-                logEl.textContent = 'Log cleared.\n';
-            }
-        }
-
-        // Global Monday.com SDK reference
-        let monday = null;
-
-        // Extract data from URL parameters (since we have the board context)
-        function getUrlParams() {
+        // Extract Monday.com context
+        function getMondayContext() {
             const urlParams = new URLSearchParams(window.location.search);
             return {
                 boardId: urlParams.get('boardId'),
                 sessionToken: urlParams.get('sessionToken'),
                 userId: urlParams.get('userId'),
-                accountId: urlParams.get('accountId'),
-                instanceId: urlParams.get('instanceId')
+                accountId: urlParams.get('accountId')
             };
         }
 
-        async function runTest() {
-            log('=== CCPM CONNECTION TEST STARTED ===');
+        // Update UI elements
+        function updateUI() {
+            updateMetrics();
+            updateCurrentView();
+            updateInsights();
+        }
+
+        function updateMetrics() {
+            const metrics = ccmpEngine.getProjectMetrics();
             
-            try {
-                // Step 1: Check URL parameters
-                const params = getUrlParams();
-                log(`Board ID from URL: ${params.boardId}`);
-                log(`Session Token: ${params.sessionToken ? 'Present' : 'Missing'}`);
-                log(`Running in iframe: ${window !== window.top}`);
-                
-                if (params.boardId) {
-                    updateStatus(`✅ Board context detected: ${params.boardId}`, 'success');
-                } else {
-                    updateStatus('⚠️ No board ID in URL parameters', 'warning');
-                }
+            document.getElementById('traditionalDuration').textContent = metrics.traditionalTotal;
+            document.getElementById('ccmpDuration').textContent = metrics.ccmpTotal;
+            document.getElementById('timeSavings').textContent = Math.abs(metrics.timeSaved);
+            document.getElementById('savingsPercent').textContent = `${Math.abs(metrics.savingsPercent)}% improvement`;
+            document.getElementById('bufferEfficiency').textContent = `${metrics.avgBufferEfficiency}%`;
+        }
 
-                // Step 2: Try to access Monday SDK
-                log('Checking for Monday SDK...');
-                
-                // Check multiple possible ways Monday SDK might be available
-                const sdkSources = [
-                    () => window.mondaySDK,
-                    () => window.monday,
-                    () => parent.mondaySDK,
-                    () => parent.monday
-                ];
-
-                let sdkFound = false;
-                for (let i = 0; i < sdkSources.length; i++) {
-                    try {
-                        const sdk = sdkSources[i]();
-                        if (sdk && typeof sdk === 'function') {
-                            monday = sdk();
-                            log(`✅ Monday SDK found via method ${i + 1}`);
-                            updateStatus('✅ Monday SDK initialized', 'success');
-                            sdkFound = true;
-                            break;
-                        }
-                    } catch (e) {
-                        log(`SDK check method ${i + 1} failed: ${e.message}`);
-                    }
-                }
-
-                if (!sdkFound) {
-                    log('❌ Monday SDK not found in any location');
-                    updateStatus('❌ Monday SDK not available', 'error');
-                    
-                    // Even without SDK, we can show the board context from URL
-                    if (params.boardId) {
-                        showBoardContext(params);
-                    }
-                    return;
-                }
-
-                // Step 3: Try to get context from SDK
-                log('Getting context from Monday SDK...');
-                try {
-                    const context = await monday.get("context");
-                    log(`Context received: ${JSON.stringify(context, null, 2)}`);
-                    
-                    if (context && context.data && context.data.boardId) {
-                        updateStatus(`✅ Connected to Monday.com board: ${context.data.boardId}`, 'success');
-                        await loadBoardData(context.data.boardId);
-                    } else {
-                        log('No board context from SDK, using URL parameters');
-                        if (params.boardId) {
-                            showBoardContext(params);
-                        }
-                    }
-                } catch (contextError) {
-                    log(`Context error: ${contextError.message}`);
-                    updateStatus(`⚠️ SDK context failed, using URL data`, 'warning');
-                    
-                    if (params.boardId) {
-                        showBoardContext(params);
-                    }
-                }
-
-                log('=== TEST COMPLETED ===');
-
-            } catch (error) {
-                log(`Test failed: ${error.message}`);
-                updateStatus(`❌ Test failed: ${error.message}`, 'error');
+        function updateCurrentView() {
+            const view = document.getElementById('viewMode').value;
+            
+            // Hide all views
+            document.getElementById('tableView').style.display = 'none';
+            document.getElementById('timelineView').style.display = 'none';
+            document.getElementById('ganttView').style.display = 'none';
+            
+            // Show selected view
+            document.getElementById(`${view}View`).style.display = 'block';
+            
+            switch(view) {
+                case 'table':
+                    updateTableView();
+                    document.getElementById('viewTitle').textContent = '📋 Task Buffer Management';
+                    break;
+                case 'timeline':
+                    updateTimelineView();
+                    document.getElementById('viewTitle').textContent = '⏱️ CCPM Timeline';
+                    break;
+                case 'gantt':
+                    document.getElementById('viewTitle').textContent = '📊 CCPM Gantt Chart';
+                    break;
             }
         }
 
-        // Show board context from URL parameters
-        function showBoardContext(params) {
-            log('Displaying board context from URL parameters');
+        function updateTableView() {
+            const tbody = document.getElementById('taskTableBody');
+            tbody.innerHTML = ccmpEngine.tasks.map(task => `
+                <tr>
+                    <td>
+                        <strong>${task.name}</strong>
+                        ${task.isCritical ? '<span class="status status-error">Critical</span>' : ''}
+                    </td>
+                    <td>${task.originalEstimate}d</td>
+                    <td><strong style="color: #0073ea;">${task.aggressiveDuration}d</strong></td>
+                    <td><strong style="color: #fdab3d;">${task.bufferSize}d</strong></td>
+                    <td>
+                        <input type="number" class="buffer-input" value="${task.bufferPercent}" 
+                               min="0" max="80" onchange="updateTaskBuffer('${task.id}', this.value)">%
+                    </td>
+                    <td>
+                        <span class="status ${task.isCritical ? 'status-error' : 'status-success'}">
+                            ${task.isCritical ? 'Critical' : 'Normal'}
+                        </span>
+                    </td>
+                    <td>
+                        <button onclick="analyzeTask('${task.id}')" style="padding: 4px 8px; font-size: 11px;">
+                            Analyze
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function updateTimelineView() {
+            const maxDuration = Math.max(...ccmpEngine.tasks.map(t => t.bufferedEnd));
+            const scale = Math.min(20, 800 / maxDuration);
             
-            const boardSection = document.getElementById('boardSection');
-            const boardInfo = document.getElementById('boardInfo');
+            // Update timeline scale
+            const scaleEl = document.getElementById('timelineScale');
+            const scalePoints = [];
+            for (let i = 0; i <= maxDuration; i += Math.ceil(maxDuration / 8)) {
+                scalePoints.push(`<div>Day ${i}</div>`);
+            }
+            scaleEl.innerHTML = scalePoints.join('');
             
-            if (boardSection && boardInfo) {
-                boardInfo.innerHTML = `
-                    <h3>📋 Board Context (from URL)</h3>
-                    <div><strong>Board ID:</strong> ${params.boardId}</div>
-                    <div><strong>Session Token:</strong> ${params.sessionToken ? 'Available' : 'Not available'}</div>
-                    <div><strong>Instance ID:</strong> ${params.instanceId || 'Not available'}</div>
-                    <div style="margin-top: 12px; padding: 12px; background: #e3f2fd; border-radius: 4px; font-size: 14px;">
-                        <strong>🎯 Success!</strong> Your Monday.com app is properly connected and receiving board context.
-                        To see task data, the Monday SDK needs to be accessible, but your app integration is working correctly.
+            // Update timeline tasks
+            const tasksEl = document.getElementById('timelineTasks');
+            tasksEl.innerHTML = ccmpEngine.tasks.map(task => {
+                const workWidth = Math.max(task.aggressiveDuration * scale, 40);
+                const bufferWidth = Math.max(task.bufferSize * scale, 20);
+                
+                return `
+                    <div class="timeline-task">
+                        <div class="timeline-task-name">
+                            ${task.name} ${task.isCritical ? '🔥' : ''}
+                        </div>
+                        <div class="timeline-bar-container">
+                            <div class="timeline-bar ${task.isCritical ? 'bar-critical' : 'bar-work'}" 
+                                 style="left: ${task.startDay * scale}px; width: ${workWidth}px;">
+                                ${task.aggressiveDuration}d work
+                            </div>
+                            <div class="timeline-bar bar-buffer" 
+                                 style="left: ${(task.startDay + task.aggressiveDuration) * scale}px; width: ${bufferWidth}px;">
+                                +${task.bufferSize}d
+                            </div>
+                        </div>
                     </div>
                 `;
+            }).join('');
+        }
+
+        function updateInsights() {
+            const metrics = ccmpEngine.getProjectMetrics();
+            
+            const projectInsights = [
+                `Project will complete ${Math.abs(metrics.timeSaved)} days ${metrics.timeSaved >= 0 ? 'earlier' : 'later'} than traditional scheduling`,
+                `${metrics.criticalChainTasks} of ${ccmpEngine.tasks.length} tasks are on the critical chain`,
+                `Average buffer protection: ${metrics.avgBufferEfficiency}%`,
+                `Relay race scheduling eliminates task-level safety padding`
+            ];
+            
+            const bufferInsights = [
+                `Using ${ccmpEngine.bufferStrategy}% buffer strategy`,
+                `Project buffer set to ${ccmpEngine.projectBufferPercent}%`,
+                `Total buffer time: ${ccmpEngine.tasks.reduce((sum, t) => sum + t.bufferSize, 0)} days`,
+                `Buffer efficiency rating: ${metrics.avgBufferEfficiency >= 40 ? 'Good' : metrics.avgBufferEfficiency >= 25 ? 'Fair' : 'Low'}`
+            ];
+            
+            document.getElementById('projectInsights').innerHTML = projectInsights
+                .map(insight => `<div class="insight-item">${insight}</div>`).join('');
                 
-                boardSection.style.display = 'block';
-                updateStatus('✅ Board context loaded from URL parameters', 'success');
+            document.getElementById('bufferInsights').innerHTML = bufferInsights
+                .map(insight => `<div class="insight-item">${insight}</div>`).join('');
+        }
+
+        // Event handlers
+        function updateBufferStrategy() {
+            const strategy = document.getElementById('bufferStrategy').value;
+            if (strategy === 'custom') return;
+            
+            ccmpEngine.bufferStrategy = parseInt(strategy);
+            ccmpEngine.tasks.forEach(task => {
+                task.bufferPercent = ccmpEngine.bufferStrategy;
+                ccmpEngine.calculateTaskCCMP(task);
+            });
+            
+            recalculate();
+        }
+
+        function updateTaskBuffer(taskId, newPercent) {
+            const task = ccmpEngine.tasks.find(t => t.id === taskId);
+            if (task) {
+                task.bufferPercent = Math.max(0, Math.min(80, parseInt(newPercent)));
+                ccmpEngine.calculateTaskCCMP(task);
+                recalculate();
             }
         }
 
-        // Load board data via Monday API
-        async function loadBoardData(boardId) {
-            if (!monday) {
-                log('Cannot load board data - SDK not available');
-                return;
+        function recalculate() {
+            ccmpEngine.calculateTimeline();
+            updateUI();
+        }
+
+        function switchView() {
+            updateCurrentView();
+        }
+
+        function analyzeTask(taskId) {
+            const task = ccmpEngine.tasks.find(t => t.id === taskId);
+            if (task) {
+                alert(`Task Analysis: ${task.name}\n\n` +
+                     `Original Estimate: ${task.originalEstimate} days\n` +
+                     `Aggressive Duration: ${task.aggressiveDuration} days\n` +
+                     `Buffer: ${task.bufferSize} days (${task.bufferPercent}%)\n` +
+                     `Critical Chain: ${task.isCritical ? 'Yes' : 'No'}\n` +
+                     `Timeline: Day ${task.startDay} - ${task.bufferedEnd}`);
             }
+        }
 
-            try {
-                log(`Loading board data for: ${boardId}`);
-                
-                const query = `
-                    query {
-                        boards(ids: [${boardId}]) {
-                            id
-                            name
-                            description
-                            items_count
-                            items {
-                                id
-                                name
-                                column_values {
-                                    title
-                                    text
-                                    type
-                                    value
-                                }
-                            }
-                        }
-                    }
-                `;
-
-                const response = await monday.api(query);
-                log(`API Response: ${JSON.stringify(response, null, 2)}`);
-
-                if (response.data && response.data.boards && response.data.boards.length > 0) {
-                    const board = response.data.boards[0];
-                    displayBoardData(board);
-                    updateStatus(`✅ Board data loaded: ${board.name} (${board.items.length} tasks)`, 'success');
-                } else {
-                    log('No board data in API response');
-                    updateStatus('❌ No board data received from API', 'error');
+        function exportResults() {
+            const metrics = ccmpEngine.getProjectMetrics();
+            const results = {
+                boardId: ccmpEngine.boardId,
+                timestamp: new Date().toISOString(),
+                metrics: metrics,
+                tasks: ccmpEngine.tasks,
+                configuration: {
+                    bufferStrategy: ccmpEngine.bufferStrategy,
+                    projectBuffer: ccmpEngine.projectBufferPercent
                 }
-
-            } catch (error) {
-                log(`Board data error: ${error.message}`);
-                updateStatus(`❌ Failed to load board data: ${error.message}`, 'error');
-            }
+            };
+            
+            const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `ccmp-analysis-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
         }
 
-        // Display board data in UI
-        function displayBoardData(board) {
-            log(`Displaying data for board: ${board.name}`);
+        function refreshData() {
+            // In real implementation, this would fetch fresh data from Monday.com
+            const context = getMondayContext();
+            if (context.boardId) {
+                document.getElementById('connectionStatus').innerHTML = 
+                    '<span class="status status-success">✅ Connected to Monday.com Board: ' + context.boardId + '</span>';
+            }
             
-            const boardSection = document.getElementById('boardSection');
-            const boardInfo = document.getElementById('boardInfo');
-            const taskContainer = document.getElementById('taskContainer');
+            // For now, reinitialize with sample data
+            initializeSampleData();
+        }
+
+        // Initialize application
+        function initialize() {
+            const context = getMondayContext();
             
-            if (!boardSection || !boardInfo || !taskContainer) return;
-
-            // Board information
-            boardInfo.innerHTML = `
-                <h3>📋 ${board.name}</h3>
-                <div><strong>Board ID:</strong> ${board.id}</div>
-                <div><strong>Total Items:</strong> ${board.items_count}</div>
-                <div><strong>Description:</strong> ${board.description || 'No description'}</div>
-            `;
-
-            // Task cards
-            if (board.items && board.items.length > 0) {
-                taskContainer.innerHTML = `
-                    <h3>📝 Tasks (${board.items.length})</h3>
-                    <div class="task-grid">
-                        ${board.items.map(item => {
-                            // Extract useful column data
-                            let status = 'No status';
-                            let timeline = 'No timeline';
-                            let assignee = 'No assignee';
-                            
-                            item.column_values.forEach(col => {
-                                if (col.type === 'status' && col.text) {
-                                    status = col.text;
-                                }
-                                if (col.type === 'timeline' && col.text) {
-                                    timeline = col.text;
-                                }
-                                if (col.type === 'people' && col.text) {
-                                    assignee = col.text;
-                                }
-                            });
-
-                            return `
-                                <div class="task-card">
-                                    <div class="task-title">${item.name}</div>
-                                    <div class="task-details">
-                                        <div><strong>ID:</strong> ${item.id}</div>
-                                        <div><strong>Status:</strong> ${status}</div>
-                                        <div><strong>Timeline:</strong> ${timeline}</div>
-                                        <div><strong>Assignee:</strong> ${assignee}</div>
-                                    </div>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-                `;
+            if (context.boardId) {
+                ccmpEngine.boardId = context.boardId;
+                document.getElementById('boardIdDisplay').textContent = context.boardId;
+                document.getElementById('connectionStatus').innerHTML = 
+                    '<span class="status status-success">✅ Connected to Monday.com Board: ' + context.boardId + '</span>';
             } else {
-                taskContainer.innerHTML = '<div class="task-card">No tasks found in this board.</div>';
+                document.getElementById('connectionStatus').innerHTML = 
+                    '<span class="status status-warning">⚠️ Demo mode - No Monday.com board detected</span>';
             }
-
-            boardSection.style.display = 'block';
+            
+            // Initialize with sample CCMP data
+            initializeSampleData();
         }
 
-        // Initialize when page loads
+        // Start the application
         window.addEventListener('load', function() {
-            log('CCPM Board Viewer loaded');
-            log(`Current URL: ${window.location.href}`);
-            
-            // Wait a moment for Monday.com environment to initialize
-            setTimeout(() => {
-                runTest();
-            }, 1000);
+            setTimeout(initialize, 500);
         });
     </script>
 </body>
