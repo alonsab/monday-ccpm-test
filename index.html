@@ -1,815 +1,37 @@
-<script>
-        // Pure JavaScript Monday.com API Client (No SDK Required)
-        class MondayAPIClient {
-            constructor() {
-                this.sessionToken = null;
-                this.shortLivedToken = null;
-                this.boardId = null;
-                this.accountId = null;
-                this.userId = null;
-                this.isAuthenticated = false;
-                this.tokenExpiry = null;
-                this.apiEndpoint = 'https://api.monday.com/v2';
-            }
-
-            // Extract authentication data from URL parameters
-            parseURLParams() {
-                const urlParams = new URLSearchParams(window.location.search);
-                const params = {
-                    boardId: urlParams.get('boardId'),
-                    sessionToken: urlParams.get('sessionToken'),
-                    instanceId: urlParams.get('instanceId'),
-                    boardViewId: urlParams.get('boardViewId')
-                };
-                
-                console.log('🔗 URL Parameters extracted:', {
-                    boardId: params.boardId,
-                    hasSessionToken: !!params.sessionToken,
-                    instanceId: params.instanceId,
-                    boardViewId: params.boardViewId,
-                    tokenLength: params.sessionToken?.length
-                });
-                
-                return params;
-            }
-
-            // Decode JWT token without external libraries
-            decodeJWTPayload(token) {
-                try {
-                    const parts = token.split('.');
-                    if (parts.length !== 3) {
-                        throw new Error('Invalid JWT format - must have 3 parts');
-                    }
-                    
-                    // Decode base64 payload (second part)
-                    let payload = parts[1];
-                    
-                    // Add padding if needed
-                    while (payload.length % 4) {
-                        payload += '=';
-                    }
-                    
-                    // Replace URL-safe characters
-                    payload = payload.replace(/-/g, '+').replace(/_/g, '/');
-                    
-                    // Decode base64
-                    const decoded = JSON.parse(atob(payload));
-                    
-                    console.log('🔓 JWT payload decoded:', {
-                        userId: decoded.dat?.user_id,
-                        accountId: decoded.dat?.account_id,
-                        clientId: decoded.dat?.client_id,
-                        isAdmin: decoded.dat?.is_admin,
-                        userKind: decoded.dat?.user_kind,
-                        exp: decoded.exp,
-                        expiryTime: new Date(decoded.exp * 1000).toLocaleString(),
-                        isExpired: decoded.exp * 1000 < Date.now()
-                    });
-                    
-                    return decoded;
-                } catch (error) {
-                    console.error('❌ JWT decode failed:', error);
-                    throw new Error(`Failed to decode JWT: ${error.message}`);
-                }
-            }
-
-            async initialize() {
-                try {
-                    console.log('🚀 Initializing Pure Monday.com API Client...');
-                    console.log('🔧 Using direct fetch() calls - no external SDK required');
-                    
-                    // Extract URL parameters
-                    const params = this.parseURLParams();
-                    
-                    if (!params.boardId) {
-                        throw new Error('Missing boardId parameter in URL');
-                    }
-                    
-                    if (!params.sessionToken) {
-                        throw new Error('Missing sessionToken parameter in URL');
-                    }
-                    
-                    this.boardId = params.boardId;
-                    this.sessionToken = params.sessionToken;
-                    
-                    // Decode JWT to extract authentication info
-                    const decodedToken = this.decodeJWTPayload(params.sessionToken);
-                    
-                    if (!decodedToken.dat) {
-                        throw new Error('Invalid JWT structure - missing authentication data');
-                    }
-                    
-                    // Extract user info from JWT
-                    this.userId = decodedToken.dat.user_id;
-                    this.accountId = decodedToken.dat.account_id;
-                    this.tokenExpiry = new Date(decodedToken.exp * 1000);
-                    
-                    // Check if token is expired
-                    if (this.tokenExpiry <= new Date()) {
-                        throw new Error(`Session token expired at ${this.tokenExpiry.toLocaleString()}`);
-                    }
-                    
-                    // Use sessionToken directly for API authentication
-                    this.shortLivedToken = this.sessionToken;
-                    this.isAuthenticated = true;
-                    
-                    console.log('✅ Authentication successful:', {
-                        method: 'Pure API Client (no SDK)',
-                        boardId: this.boardId,
-                        userId: this.userId,
-                        accountId: this.accountId,
-                        tokenExpiry: this.tokenExpiry.toLocaleString(),
-                        timeRemaining: Math.floor((this.tokenExpiry - new Date()) / 1000) + 's'
-                    });
-                    
-                    // Test API connectivity with a simple query
-                    await this.testConnection();
-                    
-                    return {
-                        success: true,
-                        boardId: this.boardId,
-                        userId: this.userId,
-                        accountId: this.accountId,
-                        method: 'Direct API'
-                    };
-                    
-                } catch (error) {
-                    console.error('❌ Initialization failed:', error);
-                    return { success: false, error: error.message };
-                }
-            }
-
-            // Test API connectivity
-            async testConnection() {
-                console.log('🔌 Testing API connectivity...');
-                
-                const testQuery = `
-                    query {
-                        me {
-                            id
-                            name
-                            email
-                        }
-                    }
-                `;
-                
-                const result = await this.executeGraphQLQuery(testQuery);
-                
-                if (result.data?.me) {
-                    console.log('✅ API connection successful:', {
-                        userName: result.data.me.name,
-                        userId: result.data.me.id,
-                        email: result.data.me.email
-                    });
-                } else {
-                    throw new Error('API connection test failed - no user data returned');
-                }
-            }
-
-            // Execute GraphQL queries using pure fetch()
-            async executeGraphQLQuery(query, variables = {}) {
-                if (!this.isAuthenticated) {
-                    throw new Error('Not authenticated - call initialize() first');
-                }
-                
-                // Check token expiry
-                if (new Date() >= this.tokenExpiry) {
-                    throw new Error('Token expired - please refresh the page');
-                }
-                
-                try {
-                    console.log('📤 Executing GraphQL query...');
-                    console.log('🔗 Endpoint:', this.apiEndpoint);
-                    console.log('📋 Query preview:', query.substring(0, 150).replace(/\s+/g, ' ').trim() + '...');
-                    
-                    const response = await fetch(this.apiEndpoint, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${this.shortLivedToken}`,
-                            'API-Version': '2023-10',
-                            'User-Agent': 'Monday-CCPM-App/1.0'
-                        },
-                        body: JSON.stringify({
-                            query: query,
-                            variables: variables
-                        })
-                    });
-                    
-                    console.log('📡 Response status:', response.status, response.statusText);
-                    
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        console.error('❌ HTTP Error Response:', errorText);
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}\n${errorText}`);
-                    }
-                    
-                    const result = await response.json();
-                    
-                    if (result.errors && result.errors.length > 0) {
-                        console.error('❌ GraphQL Errors:', result.errors);
-                        const errorMsg = result.errors.map(err => err.message).join(', ');
-                        throw new Error(`GraphQL Error: ${errorMsg}`);
-                    }
-                    
-                    if (!result.data) {
-                        console.error('❌ No data in response:', result);
-                        throw new Error('No data returned from GraphQL query');
-                    }
-                    
-                    console.log('✅ Query executed successfully');
-                    return result;
-                    
-                } catch (error) {
-                    console.error('❌ GraphQL query failed:', error);
-                    throw error;
-                }
-            }
-
-            // Get board data with comprehensive query
-            async getBoardData() {
-                if (!this.boardId) {
-                    throw new Error('No board ID available');
-                }
-
-                console.log('📊 Fetching board data for ID:', this.boardId);
-
-                const query = `
-                    query GetBoardData($boardId: ID!) {
-                        boards(ids: [$boardId]) {
-                            id
-                            name
-                            description
-                            state
-                            items_count
-                            updated_at
-                            board_folder_id
-                            board_kind
-                            permissions
-                            columns {
-                                id
-                                title
-                                type
-                                settings_str
-                                archived
-                                width
-                            }
-                            groups {
-                                id
-                                title
-                                color
-                                position
-                                archived
-                                deleted
-                            }
-                            items {
-                                id
-                                name
-                                state
-                                created_at
-                                updated_at
-                                creator_id
-                                group {
-                                    id
-                                    title
-                                    color
-                                }
-                                column_values {
-                                    id
-                                    value
-                                    text
-                                    type
-                                    title
-                                    additional_info
-                                }
-                                subitems {
-                                    id
-                                    name
-                                    column_values {
-                                        id
-                                        title
-                                        text
-                                        value
-                                    }
-                                }
-                            }
-                        }
-                    }
-                `;
-                
-                const variables = {
-                    boardId: this.boardId
-                };
-
-                const result = await this.executeGraphQLQuery(query, variables);
-                
-                if (!result.data.boards || result.data.boards.length === 0) {
-                    throw new Error(`Board ${this.boardId} not found or access denied`);
-                }
-                
-                const boardData = result.data.boards[0];
-                
-                console.log('✅ Board data loaded successfully:', {
-                    id: boardData.id,
-                    name: boardData.name,
-                    state: boardData.state,
-                    itemCount: boardData.items?.length || 0,
-                    columnCount: boardData.columns?.length || 0,
-                    groupCount: boardData.groups?.length || 0,
-                    boardKind: boardData.board_kind,
-                    permissions: boardData.permissions
-                });
-                
-                return boardData;
-            }
-
-            // Get remaining token time in seconds
-            getTokenTimeRemaining() {
-                if (!this.tokenExpiry) return 0;
-                return Math.max(0, Math.floor((this.tokenExpiry.getTime() - Date.now()) / 1000));
-            }
-
-            // Check if token expires in less than 1 minute
-            isTokenExpiringSoon() {
-                return this.getTokenTimeRemaining() < 60;
-            }
-
-            // Get client status
-            getStatus() {
-                return {
-                    isAuthenticated: this.isAuthenticated,
-                    boardId: this.boardId,
-                    userId: this.userId,
-                    accountId: this.accountId,
-                    tokenExpiry: this.tokenExpiry,
-                    timeRemaining: this.getTokenTimeRemaining(),
-                    expiringSoon: this.isTokenExpiringSoon(),
-                    apiMethod: 'Pure Fetch API (No SDK)'
-                };
-            }
-        }
-
-        // App State
-        const app = {
-            client: new MondayAPIClient(),
-            boardData: null,
-            isLoading: true,
-            error: null,
-            tokenCheckInterval: null
-        };
-
-        // DOM Elements (same as before)
-        const elements = {
-            loading: document.getElementById('loading'),
-            error: document.getElementById('error'),
-            errorMessage: document.getElementById('errorMessage'),
-            connectionStatus: document.getElementById('connectionStatus'),
-            statusIndicator: document.getElementById('statusIndicator'),
-            statusText: document.getElementById('statusText'),
-            boardInfo: document.getElementById('boardInfo'),
-            boardName: document.getElementById('boardName'),
-            boardId: document.getElementById('boardId'),
-            itemCount: document.getElementById('itemCount'),
-            lastUpdate: document.getElementById('lastUpdate'),
-            tasksContainer: document.getElementById('tasksContainer'),
-            tasksTableBody: document.getElementById('tasksTableBody'),
-            debugInfo: document.getElementById('debugInfo'),
-            debugContent: document.getElementById('debugContent'),
-            toggleDebug: document.getElementById('toggleDebug'),
-            debugArrow: document.getElementById('debugArrow')
-        };
-
-        // Utility Functions (same as before but simplified)
-        function updateConnectionStatus(status, message) {
-            elements.statusIndicator.className = `w-3 h-3 rounded-full mr-3 ${
-                status === 'connected' ? 'bg-green-500' :
-                status === 'warning' ? 'bg-yellow-500' :
-                status === 'error' ? 'bg-red-500' : 'bg-blue-500'
-            }`;
-            elements.statusText.textContent = message;
-        }
-
-        function showLoading() {
-            elements.loading.classList.remove('hidden');
-            elements.error.classList.add('hidden');
-            elements.boardInfo.classList.add('hidden');
-            elements.tasksContainer.classList.add('hidden');
-        }
-
-        function showError(message) {
-            elements.loading.classList.add('hidden');
-            elements.error.classList.remove('hidden');
-            elements.errorMessage.textContent = message;
-            updateConnectionStatus('error', 'Connection failed');
-        }
-
-        function showContent() {
-            elements.loading.classList.add('hidden');
-            elements.error.classList.add('hidden');
-            elements.boardInfo.classList.remove('hidden');
-            elements.tasksContainer.classList.remove('hidden');
-        }
-
-        function formatDate(dateString) {
-            if (!dateString) return 'N/A';
-            try {
-                return new Date(dateString).toLocaleString();
-            } catch (e) {
-                return dateString;
-            }
-        }
-
-        function getStatusBadge(state) {
-            const colors = {
-                'active': 'bg-green-100 text-green-800 border-green-200',
-                'archived': 'bg-gray-100 text-gray-800 border-gray-200',
-                'deleted': 'bg-red-100 text-red-800 border-red-200',
-                'done': 'bg-blue-100 text-blue-800 border-blue-200'
-            };
-            
-            return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${colors[state] || 'bg-gray-100 text-gray-800 border-gray-200'}">
-                ${state || 'unknown'}
-            </span>`;
-        }
-
-        function renderBoardInfo(boardData) {
-            elements.boardName.textContent = boardData.name || 'Unnamed Board';
-            elements.boardId.textContent = `Board ID: ${boardData.id}`;
-            elements.itemCount.textContent = `Items: ${boardData.items_count || boardData.items?.length || 0}`;
-            elements.lastUpdate.textContent = `Last Updated: ${formatDate(boardData.updated_at)}`;
-        }
-
-        function parseColumnValue(columnValue) {
-            if (!columnValue.value) return columnValue.text || '';
-            
-            try {
-                // Try to parse JSON values
-                const parsed = JSON.parse(columnValue.value);
-                
-                if (parsed.text) return parsed.text;
-                if (parsed.label) return parsed.label;
-                if (parsed.date) return new Date(parsed.date).toLocaleDateString();
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                    return parsed.map(item => item.name || item.text || item).join(', ');
-                }
-                
-                return columnValue.text || columnValue.value;
-            } catch (e) {
-                return columnValue.text || columnValue.value;
-            }
-        }
-
-        function renderTasks(items) {
-            if (!items || items.length === 0) {
-                elements.tasksTableBody.innerHTML = `
-                    <tr>
-                        <td colspan="4" class="px-6 py-8 text-center text-gray-500">
-                            <div class="flex flex-col items-center">
-                                <svg class="w-8 h-8 mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                                </svg>
-                                <p>No items found in this board</p>
-                                <p class="text-xs mt-1">The board might be empty or you might not have access to view items</p>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-                return;
-            }
-
-            elements.tasksTableBody.innerHTML = items.map(item => {
-                // Get meaningful column values
-                const keyColumns = item.column_values
-                    ?.filter(cv => {
-                        if (!cv.value || cv.value === '""' || cv.value === '{}' || cv.value === 'null') return false;
-                        if (cv.type === 'name') return false; // Skip name column as it's already shown
-                        return true;
-                    })
-                    ?.slice(0, 4) // Show up to 4 columns
-                    ?.map(cv => {
-                        const displayValue = parseColumnValue(cv);
-                        const colorClass = cv.type === 'status' ? 'bg-blue-50 text-blue-800 border-blue-200' : 'bg-gray-50 text-gray-800 border-gray-200';
-                        
-                        return `<span class="inline-block ${colorClass} px-2 py-1 rounded border text-xs mr-1 mb-1" title="${cv.title} (${cv.type})">
-                            <strong>${cv.title}:</strong> ${displayValue}
-                        </span>`;
-                    })
-                    ?.join('') || '<span class="text-gray-400 text-sm italic">No column data</span>';
-
-                const groupInfo = item.group ? 
-                    `<div class="text-xs text-gray-500 flex items-center mt-1">
-                        <div class="w-2 h-2 rounded-full mr-1" style="background-color: ${item.group.color}"></div>
-                        ${item.group.title}
-                    </div>` : '';
-
-                const subitemCount = item.subitems ? `<div class="text-xs text-gray-400">${item.subitems.length} subitems</div>` : '';
-
-                return `
-                    <tr class="hover:bg-gray-50 transition-colors">
-                        <td class="px-6 py-4">
-                            <div>
-                                <div class="text-sm font-medium text-gray-900 mb-1">${item.name || 'Unnamed Item'}</div>
-                                <div class="text-xs text-gray-500">ID: ${item.id}</div>
-                                ${groupInfo}
-                                ${subitemCount}
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            ${getStatusBadge(item.state)}
-                        </td>
-                        <td class="px-6 py-4">
-                            <div class="max-w-sm">
-                                ${keyColumns}
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <div>Updated: ${formatDate(item.updated_at)}</div>
-                            <div class="text-xs text-gray-400">Created: ${formatDate(item.created_at)}</div>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
-
-            console.log(`✅ Rendered ${items.length} board items`);
-        }
-
-        // Enhanced debug information
-        function updateDebugInfo() {
-            const clientStatus = app.client.getStatus();
-            const urlParams = new URLSearchParams(window.location.search);
-            
-            const debugData = {
-                timestamp: new Date().toISOString(),
-                authentication: {
-                    method: clientStatus.apiMethod,
-                    isAuthenticated: clientStatus.isAuthenticated,
-                    boardId: clientStatus.boardId,
-                    userId: clientStatus.userId,
-                    accountId: clientStatus.accountId,
-                    tokenExpiry: clientStatus.tokenExpiry,
-                    timeRemainingSeconds: clientStatus.timeRemaining,
-                    expiringSoon: clientStatus.expiringSoon
-                },
-                urlParameters: {
-                    boardId: urlParams.get('boardId'),
-                    hasSessionToken: !!urlParams.get('sessionToken'),
-                    sessionTokenLength: urlParams.get('sessionToken')?.length,
-                    instanceId: urlParams.get('instanceId'),
-                    boardViewId: urlParams.get('boardViewId')
-                },
-                boardData: app.boardData ? {
-                    id: app.boardData.id,
-                    name: app.boardData.name,
-                    state: app.boardData.state,
-                    boardKind: app.boardData.board_kind,
-                    itemCount: app.boardData.items?.length || 0,
-                    columnCount: app.boardData.columns?.length || 0,
-                    groupCount: app.boardData.groups?.length || 0,
-                    permissions: app.boardData.permissions
-                } : null,
-                error: app.error,
-                environment: {
-                    userAgent: navigator.userAgent,
-                    url: window.location.href,
-                    referrer: document.referrer || 'Direct access',
-                    timestamp: new Date().toISOString()
-                }
-            };
-
-            // Enhanced debug display
-            if (elements.debugContent) {
-                elements.debugContent.innerHTML = `
-                    <div class="space-y-4">
-                        <div>
-                            <h4 class="font-medium text-green-600 mb-2">✅ Authentication Status</h4>
-                            <div class="space-y-1 text-sm">
-                                <div>Method: <span class="font-mono text-green-600">${clientStatus.apiMethod}</span></div>
-                                <div>Status: <span class="font-mono ${clientStatus.isAuthenticated ? 'text-green-600' : 'text-red-600'}">${clientStatus.isAuthenticated ? 'Authenticated' : 'Not Authenticated'}</span></div>
-                                <div>Board ID: <span class="font-mono">${clientStatus.boardId || 'N/A'}</span></div>
-                                <div>User ID: <span class="font-mono">${clientStatus.userId || 'N/A'}</span></div>
-                                <div>Account ID: <span class="font-mono">${clientStatus.accountId || 'N/A'}</span></div>
-                                <div>Token Expires: <span class="font-mono">${clientStatus.tokenExpiry ? clientStatus.tokenExpiry.toLocaleString() : 'N/A'}</span></div>
-                                <div>Time Remaining: <span class="font-mono ${clientStatus.expiringSoon ? 'text-red-600' : 'text-green-600'}">${Math.floor(clientStatus.timeRemaining / 60)}m ${clientStatus.timeRemaining % 60}s</span></div>
-                            </div>
-                        </div>
-                        
-                        ${app.boardData ? `
-                            <div>
-                                <h4 class="font-medium text-blue-600 mb-2">📊 Board Information</h4>
-                                <div class="space-y-1 text-sm">
-                                    <div>Name: <span class="font-medium">${app.boardData.name}</span></div>
-                                    <div>State: <span class="font-medium">${app.boardData.state}</span></div>
-                                    <div>Type: <span class="font-medium">${app.boardData.board_kind || 'Standard'}</span></div>
-                                    <div>Items: <span class="font-medium">${app.boardData.items?.length || 0}</span></div>
-                                    <div>Columns: <span class="font-medium">${app.boardData.columns?.length || 0}</span></div>
-                                    <div>Groups: <span class="font-medium">${app.boardData.groups?.length || 0}</span></div>
-                                    <div>Permissions: <span class="font-mono text-xs">${app.boardData.permissions || 'N/A'}</span></div>
-                                </div>
-                            </div>
-                        ` : ''}
-                        
-                        ${app.error ? `
-                            <div>
-                                <h4 class="font-medium text-red-600 mb-2">❌ Error Details</h4>
-                                <div class="bg-red-50 border border-red-200 rounded p-3">
-                                    <pre class="text-sm text-red-800 whitespace-pre-wrap">${app.error}</pre>
-                                </div>
-                            </div>
-                        ` : ''}
-                        
-                        <div>
-                            <h4 class="font-medium text-gray-600 mb-2">🔧 Technical Details</h4>
-                            <div class="bg-gray-50 border rounded p-3">
-                                <pre class="text-xs text-gray-700 whitespace-pre-wrap overflow-auto max-h-64">${JSON.stringify(debugData, null, 2)}</pre>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
-        }
-
-        // Token monitoring with enhanced UI feedback
-        function startTokenMonitoring() {
-            function updateTokenDisplay() {
-                const status = app.client.getStatus();
-                const tokenElement = document.getElementById('tokenTime');
-                const warningElement = document.getElementById('tokenWarning');
-                
-                if (tokenElement) {
-                    const minutes = Math.floor(status.timeRemaining / 60);
-                    const seconds = status.timeRemaining % 60;
-                    
-                    if (status.timeRemaining <= 0) {
-                        tokenElement.innerHTML = `<span class="text-red-600 font-medium">⚠ Expired</span>`;
-                        if (warningElement) {
-                            warningElement.classList.remove('hidden');
-                            warningElement.querySelector('#tokenWarningText').textContent = 'Your session has expired. Please refresh the page to continue.';
-                        }
-                    } else if (status.expiringSoon) {
-                        tokenElement.innerHTML = `<span class="text-yellow-600 font-medium">⏰ ${minutes}m ${seconds}s left</span>`;
-                        if (warningElement) {
-                            warningElement.classList.remove('hidden');
-                            warningElement.querySelector('#tokenWarningText').textContent = `Your session expires in ${minutes}m ${seconds}s. Please refresh soon.`;
-                        }
-                    } else {
-                        tokenElement.innerHTML = `<span class="text-green-600 font-medium">✅ ${minutes}m remaining</span>`;
-                        if (warningElement) {
-                            warningElement.classList.add('hidden');
-                        }
-                    }
-                }
-            }
-            
-            updateTokenDisplay();
-            
-            app.tokenCheckInterval = setInterval(() => {
-                const status = app.client.getStatus();
-                updateTokenDisplay();
-                
-                if (status.timeRemaining <= 0) {
-                    clearInterval(app.tokenCheckInterval);
-                    updateConnectionStatus('error', 'Session expired');
-                    showError('Your session has expired. Please refresh the page to continue.');
-                    
-                    const refreshBtn = document.getElementById('refreshBtn');
-                    if (refreshBtn) {
-                        refreshBtn.disabled = true;
-                        refreshBtn.className = refreshBtn.className.replace('bg-blue-600 hover:bg-blue-700', 'bg-gray-400 cursor-not-allowed');
-                        refreshBtn.innerHTML = refreshBtn.innerHTML.replace('Refresh Data', 'Session Expired');
-                    }
-                } else if (status.expiringSoon) {
-                    updateConnectionStatus('warning', `Session expires in ${status.timeRemaining}s`);
-                } else {
-                    const minutes = Math.floor(status.timeRemaining / 60);
-                    updateConnectionStatus('connected', `✅ Connected - ${minutes}m remaining`);
-                }
-            }, 5000);
-        }
-
-        // Main initialization
-        async function initializeApp() {
-            try {
-                showLoading();
-                updateConnectionStatus('connecting', 'Connecting with Pure API Client...');
-
-                console.log('🚀 Starting Pure Monday.com API Client');
-                console.log('📱 No external SDK required - using native fetch()');
-
-                const result = await app.client.initialize();
-
-                if (!result.success) {
-                    throw new Error(result.error);
-                }
-
-                updateConnectionStatus('connected', `✅ Connected via ${result.method}`);
-                await loadBoardData();
-                startTokenMonitoring();
-
-            } catch (error) {
-                console.error('❌ App initialization failed:', error);
-                app.error = error.message;
-                showError(`Connection failed: ${error.message}`);
-            }
-
-            updateDebugInfo();
-        }
-
-        async function loadBoardData() {
-            try {
-                console.log('📊 Loading board data with comprehensive query...');
-                
-                app.boardData = await app.client.getBoardData();
-                
-                renderBoardInfo(app.boardData);
-                renderTasks(app.boardData.items);
-                showContent();
-
-                const itemCount = app.boardData.items?.length || 0;
-                const columnCount = app.boardData.columns?.length || 0;
-                updateConnectionStatus('connected', `✅ Loaded ${itemCount} items, ${columnCount} columns`);
-
-            } catch (error) {
-                console.error('❌ Failed to load board data:', error);
-                throw new Error(`Board loading failed: ${error.message}`);
-            }
-        }
-
-        // Refresh data function
-        async function refreshData() {
-            if (app.client.isTokenExpiringSoon()) {
-                showError('Session is expiring soon. Please refresh the page to get a new token.');
-                return;
-            }
-
-            try {
-                showLoading();
-                updateConnectionStatus('connecting', 'Refreshing board data...');
-                await loadBoardData();
-            } catch (error) {
-                app.error = error.message;
-                showError(`Refresh failed: ${error.message}`);
-                updateDebugInfo();
-            }
-        }
-
-        // Event Listeners
-        elements.toggleDebug?.addEventListener('click', () => {
-            const isHidden = elements.debugInfo.classList.contains('hidden');
-            elements.debugInfo.classList.toggle('hidden');
-            elements.debugArrow.classList.toggle('rotate-90', !isHidden);
-            
-            if (!isHidden) {
-                updateDebugInfo();
-            }
-        });
-
-        // Initialize app when DOM is ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initializeApp);
-        } else {
-            initializeApp();
-        }
-
-        // Global error handler
-        window.addEventListener('error', (event) => {
-            console.error('💥 Global error:', event.error);
-            if (!app.error) {
-                app.error = event.error.message;
-                showError(`Unexpected error: ${event.error.message}`);
-                updateDebugInfo();
-            }
-        });
-
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', () => {
-            if (app.tokenCheckInterval) {
-                clearInterval(app.tokenCheckInterval);
-            }
-        });
-
-        // Make refresh function globally available
-        window.refreshData = refreshData;
-
-        console.log('✅ Pure Monday.com API Client loaded successfully');
-        console.log('🔧 Using direct fetch() calls - no external dependencies');
-    </script><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Monday.com Board View</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- No external SDK needed - using pure fetch() API -->
 </head>
 <body class="bg-gray-50 min-h-screen">
     <div class="max-w-7xl mx-auto p-6">
-        <!-- Header moved above, now continuing with the rest of the body -->
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900 mb-2">📋 Monday.com Board View</h1>
+                <p class="text-gray-600">Pure JavaScript API Client - No External Dependencies</p>
+            </div>
+            <div class="flex items-center space-x-4">
+                <div id="tokenStatus" class="text-sm text-gray-600">
+                    <span id="tokenTime">Initializing...</span>
+                </div>
+                <button id="refreshBtn" onclick="refreshData()" class="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Refresh Data
+                </button>
+            </div>
+        </div>
 
         <!-- Connection Status -->
         <div id="connectionStatus" class="mb-6 p-4 rounded-lg border">
             <div class="flex items-center">
                 <div id="statusIndicator" class="w-3 h-3 rounded-full mr-3 bg-yellow-500"></div>
-                <span id="statusText" class="text-sm font-medium">Connecting to Monday.com...</span>
+                <span id="statusText" class="text-sm font-medium">Initializing Monday.com API Client...</span>
             </div>
         </div>
 
@@ -826,7 +48,7 @@
         <!-- Loading State -->
         <div id="loading" class="text-center py-12">
             <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p class="text-gray-600">Loading your board data...</p>
+            <p class="text-gray-600">Connecting to Monday.com API...</p>
         </div>
 
         <!-- Error State -->
@@ -861,7 +83,7 @@
                         <tr>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item Name</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Columns</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Column Data</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Update</th>
                         </tr>
                     </thead>
@@ -888,63 +110,146 @@
     </div>
 
     <script>
-        // SeamlessApiClient for external hosting
-        class MondaySeamlessClient {
+        // Pure JavaScript Monday.com API Client (Clean Version)
+        class MondayAPIClient {
             constructor() {
-                this.client = null;
-                this.isAuthenticated = false;
+                this.sessionToken = null;
                 this.boardId = null;
+                this.accountId = null;
+                this.userId = null;
+                this.isAuthenticated = false;
+                this.tokenExpiry = null;
+                this.apiEndpoint = 'https://api.monday.com/v2';
+            }
+
+            parseURLParams() {
+                const urlParams = new URLSearchParams(window.location.search);
+                return {
+                    boardId: urlParams.get('boardId'),
+                    sessionToken: urlParams.get('sessionToken'),
+                    instanceId: urlParams.get('instanceId'),
+                    boardViewId: urlParams.get('boardViewId')
+                };
+            }
+
+            decodeJWTPayload(token) {
+                try {
+                    const parts = token.split('.');
+                    if (parts.length !== 3) throw new Error('Invalid JWT format');
+                    
+                    let payload = parts[1];
+                    while (payload.length % 4) payload += '=';
+                    payload = payload.replace(/-/g, '+').replace(/_/g, '/');
+                    
+                    return JSON.parse(atob(payload));
+                } catch (error) {
+                    throw new Error(`JWT decode failed: ${error.message}`);
+                }
             }
 
             async initialize() {
                 try {
-                    console.log('🚀 Initializing SeamlessApiClient...');
+                    console.log('🚀 Initializing Pure Monday.com API Client...');
                     
-                    // Initialize SeamlessApiClient (for external hosting)
-                    if (typeof mondaySDK !== 'undefined') {
-                        this.client = mondaySDK();
-                        console.log('✅ Monday SDK loaded successfully');
-                    } else {
-                        throw new Error('Monday SDK not available');
+                    const params = this.parseURLParams();
+                    
+                    if (!params.boardId || !params.sessionToken) {
+                        throw new Error('Missing required URL parameters (boardId or sessionToken)');
                     }
-
-                    // Get context information
-                    const context = await this.client.get("context");
-                    console.log('📋 Context received:', context);
-
-                    if (context && context.data) {
-                        this.boardId = context.data.boardId;
-                        this.isAuthenticated = true;
-                        
-                        console.log(`✅ Successfully connected to board: ${this.boardId}`);
-                        return { success: true, boardId: this.boardId };
-                    } else {
-                        throw new Error('No board context available');
+                    
+                    this.boardId = params.boardId;
+                    this.sessionToken = params.sessionToken;
+                    
+                    const decodedToken = this.decodeJWTPayload(params.sessionToken);
+                    
+                    if (!decodedToken.dat) {
+                        throw new Error('Invalid JWT structure - missing authentication data');
                     }
-
+                    
+                    this.userId = decodedToken.dat.user_id;
+                    this.accountId = decodedToken.dat.account_id;
+                    this.tokenExpiry = new Date(decodedToken.exp * 1000);
+                    
+                    if (this.tokenExpiry <= new Date()) {
+                        throw new Error(`Session token expired at ${this.tokenExpiry.toLocaleString()}`);
+                    }
+                    
+                    this.isAuthenticated = true;
+                    
+                    console.log('✅ Authentication successful:', {
+                        boardId: this.boardId,
+                        userId: this.userId,
+                        accountId: this.accountId,
+                        tokenExpiry: this.tokenExpiry.toLocaleString()
+                    });
+                    
+                    await this.testConnection();
+                    
+                    return {
+                        success: true,
+                        boardId: this.boardId,
+                        userId: this.userId,
+                        accountId: this.accountId
+                    };
+                    
                 } catch (error) {
                     console.error('❌ Initialization failed:', error);
                     return { success: false, error: error.message };
                 }
             }
 
-            async executeQuery(query) {
-                if (!this.client || !this.isAuthenticated) {
-                    throw new Error('Client not initialized or authenticated');
+            async testConnection() {
+                console.log('🔌 Testing API connectivity...');
+                
+                const testQuery = `query { me { id name email } }`;
+                const result = await this.executeGraphQLQuery(testQuery);
+                
+                if (result.data?.me) {
+                    console.log('✅ API connection successful:', result.data.me);
+                } else {
+                    throw new Error('API connection test failed');
                 }
+            }
 
+            async executeGraphQLQuery(query, variables = {}) {
+                if (!this.isAuthenticated) {
+                    throw new Error('Not authenticated');
+                }
+                
+                if (new Date() >= this.tokenExpiry) {
+                    throw new Error('Token expired');
+                }
+                
                 try {
-                    console.log('📤 Executing GraphQL query:', query.substring(0, 100) + '...');
+                    console.log('📤 Executing GraphQL query...');
                     
-                    const response = await this.client.api(query);
+                    const response = await fetch(this.apiEndpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${this.sessionToken}`,
+                            'API-Version': '2023-10'
+                        },
+                        body: JSON.stringify({ query, variables })
+                    });
                     
-                    if (response.errors && response.errors.length > 0) {
-                        console.error('❌ GraphQL errors:', response.errors);
-                        throw new Error(`GraphQL Error: ${response.errors[0].message}`);
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`HTTP ${response.status}: ${errorText}`);
                     }
-
-                    console.log('✅ Query successful');
-                    return response;
+                    
+                    const result = await response.json();
+                    
+                    if (result.errors?.length > 0) {
+                        throw new Error(`GraphQL Error: ${result.errors[0].message}`);
+                    }
+                    
+                    if (!result.data) {
+                        throw new Error('No data returned');
+                    }
+                    
+                    console.log('✅ Query executed successfully');
+                    return result;
                     
                 } catch (error) {
                     console.error('❌ Query execution failed:', error);
@@ -953,13 +258,11 @@
             }
 
             async getBoardData() {
-                if (!this.boardId) {
-                    throw new Error('No board ID available');
-                }
+                console.log('📊 Fetching board data for ID:', this.boardId);
 
                 const query = `
-                    query {
-                        boards(ids: [${this.boardId}]) {
+                    query GetBoardData($boardId: ID!) {
+                        boards(ids: [$boardId]) {
                             id
                             name
                             description
@@ -971,6 +274,14 @@
                                 title
                                 type
                                 settings_str
+                                archived
+                            }
+                            groups {
+                                id
+                                title
+                                color
+                                position
+                                archived
                             }
                             items {
                                 id
@@ -978,29 +289,71 @@
                                 state
                                 created_at
                                 updated_at
+                                group {
+                                    id
+                                    title
+                                    color
+                                }
                                 column_values {
                                     id
                                     value
                                     text
                                     type
                                     title
+                                    additional_info
                                 }
                             }
                         }
                     }
                 `;
+                
+                const variables = { boardId: this.boardId };
+                const result = await this.executeGraphQLQuery(query, variables);
+                
+                if (!result.data.boards?.length) {
+                    throw new Error(`Board ${this.boardId} not found`);
+                }
+                
+                const boardData = result.data.boards[0];
+                
+                console.log('✅ Board data loaded:', {
+                    name: boardData.name,
+                    itemCount: boardData.items?.length || 0,
+                    columnCount: boardData.columns?.length || 0
+                });
+                
+                return boardData;
+            }
 
-                const response = await this.executeQuery(query);
-                return response.data.boards[0];
+            getTokenTimeRemaining() {
+                if (!this.tokenExpiry) return 0;
+                return Math.max(0, Math.floor((this.tokenExpiry.getTime() - Date.now()) / 1000));
+            }
+
+            isTokenExpiringSoon() {
+                return this.getTokenTimeRemaining() < 60;
+            }
+
+            getStatus() {
+                return {
+                    isAuthenticated: this.isAuthenticated,
+                    boardId: this.boardId,
+                    userId: this.userId,
+                    accountId: this.accountId,
+                    tokenExpiry: this.tokenExpiry,
+                    timeRemaining: this.getTokenTimeRemaining(),
+                    expiringSoon: this.isTokenExpiringSoon()
+                };
             }
         }
 
-        // App State
-        const app = {
-            client: new MondaySeamlessClient(),
+        // App State (Clean Version)
+        const mondayApp = {
+            client: new MondayAPIClient(),
             boardData: null,
             isLoading: true,
-            error: null
+            error: null,
+            tokenCheckInterval: null
         };
 
         // DOM Elements
@@ -1021,69 +374,101 @@
             debugInfo: document.getElementById('debugInfo'),
             debugContent: document.getElementById('debugContent'),
             toggleDebug: document.getElementById('toggleDebug'),
-            debugArrow: document.getElementById('debugArrow')
+            debugArrow: document.getElementById('debugArrow'),
+            tokenTime: document.getElementById('tokenTime'),
+            tokenWarning: document.getElementById('tokenWarning'),
+            tokenWarningText: document.getElementById('tokenWarningText')
         };
 
         // Utility Functions
         function updateConnectionStatus(status, message) {
-            elements.statusIndicator.className = `w-3 h-3 rounded-full mr-3 ${
-                status === 'connected' ? 'bg-green-500' :
-                status === 'error' ? 'bg-red-500' : 'bg-yellow-500'
-            }`;
+            const colors = {
+                connected: 'bg-green-500',
+                warning: 'bg-yellow-500',
+                error: 'bg-red-500',
+                connecting: 'bg-blue-500'
+            };
+            elements.statusIndicator.className = `w-3 h-3 rounded-full mr-3 ${colors[status] || 'bg-gray-500'}`;
             elements.statusText.textContent = message;
         }
 
         function showLoading() {
-            elements.loading.classList.remove('hidden');
-            elements.error.classList.add('hidden');
-            elements.boardInfo.classList.add('hidden');
-            elements.tasksContainer.classList.add('hidden');
+            elements.loading?.classList.remove('hidden');
+            elements.error?.classList.add('hidden');
+            elements.boardInfo?.classList.add('hidden');
+            elements.tasksContainer?.classList.add('hidden');
         }
 
         function showError(message) {
-            elements.loading.classList.add('hidden');
-            elements.error.classList.remove('hidden');
-            elements.errorMessage.textContent = message;
+            elements.loading?.classList.add('hidden');
+            elements.error?.classList.remove('hidden');
+            if (elements.errorMessage) elements.errorMessage.textContent = message;
             updateConnectionStatus('error', 'Connection failed');
         }
 
         function showContent() {
-            elements.loading.classList.add('hidden');
-            elements.error.classList.add('hidden');
-            elements.boardInfo.classList.remove('hidden');
-            elements.tasksContainer.classList.remove('hidden');
+            elements.loading?.classList.add('hidden');
+            elements.error?.classList.add('hidden');
+            elements.boardInfo?.classList.remove('hidden');
+            elements.tasksContainer?.classList.remove('hidden');
         }
 
         function formatDate(dateString) {
             if (!dateString) return 'N/A';
-            return new Date(dateString).toLocaleString();
+            try {
+                return new Date(dateString).toLocaleString();
+            } catch (e) {
+                return dateString;
+            }
         }
 
         function getStatusBadge(state) {
             const colors = {
                 'active': 'bg-green-100 text-green-800',
                 'archived': 'bg-gray-100 text-gray-800',
-                'deleted': 'bg-red-100 text-red-800'
+                'deleted': 'bg-red-100 text-red-800',
+                'done': 'bg-blue-100 text-blue-800'
             };
             
-            return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colors[state] || 'bg-blue-100 text-blue-800'}">
+            return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colors[state] || 'bg-gray-100 text-gray-800'}">
                 ${state || 'unknown'}
             </span>`;
         }
 
         function renderBoardInfo(boardData) {
-            elements.boardName.textContent = boardData.name || 'Unnamed Board';
-            elements.boardId.textContent = `Board ID: ${boardData.id}`;
-            elements.itemCount.textContent = `Items: ${boardData.items_count || boardData.items?.length || 0}`;
-            elements.lastUpdate.textContent = `Last Updated: ${formatDate(boardData.updated_at)}`;
+            if (elements.boardName) elements.boardName.textContent = boardData.name || 'Unnamed Board';
+            if (elements.boardId) elements.boardId.textContent = `Board ID: ${boardData.id}`;
+            if (elements.itemCount) elements.itemCount.textContent = `Items: ${boardData.items?.length || 0}`;
+            if (elements.lastUpdate) elements.lastUpdate.textContent = `Last Updated: ${formatDate(boardData.updated_at)}`;
+        }
+
+        function parseColumnValue(columnValue) {
+            if (!columnValue.value) return columnValue.text || '';
+            
+            try {
+                const parsed = JSON.parse(columnValue.value);
+                if (parsed.text) return parsed.text;
+                if (parsed.label) return parsed.label;
+                if (parsed.date) return new Date(parsed.date).toLocaleDateString();
+                return columnValue.text || columnValue.value;
+            } catch (e) {
+                return columnValue.text || columnValue.value;
+            }
         }
 
         function renderTasks(items) {
+            if (!elements.tasksTableBody) return;
+            
             if (!items || items.length === 0) {
                 elements.tasksTableBody.innerHTML = `
                     <tr>
-                        <td colspan="4" class="px-6 py-4 text-center text-gray-500">
-                            No items found in this board
+                        <td colspan="4" class="px-6 py-8 text-center text-gray-500">
+                            <div class="flex flex-col items-center">
+                                <svg class="w-8 h-8 mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                </svg>
+                                <p>No items found in this board</p>
+                            </div>
                         </td>
                     </tr>
                 `;
@@ -1091,102 +476,142 @@
             }
 
             elements.tasksTableBody.innerHTML = items.map(item => {
-                // Get key column values
                 const keyColumns = item.column_values
                     ?.filter(cv => cv.value && cv.value !== '""' && cv.value !== '{}')
-                    ?.slice(0, 3) // Show only first 3 non-empty columns
-                    ?.map(cv => `<span class="inline-block bg-gray-100 text-gray-800 px-2 py-1 rounded text-xs mr-1 mb-1">${cv.title}: ${cv.text || cv.value}</span>`)
-                    ?.join('') || '<span class="text-gray-400">No data</span>';
+                    ?.slice(0, 3)
+                    ?.map(cv => {
+                        const displayValue = parseColumnValue(cv);
+                        return `<span class="inline-block bg-gray-50 text-gray-800 px-2 py-1 rounded border text-xs mr-1 mb-1" title="${cv.title}">
+                            <strong>${cv.title}:</strong> ${displayValue}
+                        </span>`;
+                    })
+                    ?.join('') || '<span class="text-gray-400 text-sm italic">No data</span>';
+
+                const groupInfo = item.group ? 
+                    `<div class="text-xs text-gray-500 flex items-center mt-1">
+                        <div class="w-2 h-2 rounded-full mr-1" style="background-color: ${item.group.color}"></div>
+                        ${item.group.title}
+                    </div>` : '';
 
                 return `
                     <tr class="hover:bg-gray-50">
-        <!-- Add refresh button to header -->
-        <div class="flex items-center justify-between mb-6">
-            <div>
-                <h1 class="text-3xl font-bold text-gray-900 mb-2">📋 Monday.com Board View</h1>
-                <p class="text-gray-600">JWT-based authentication for GitHub-hosted apps</p>
-            </div>
-            <div class="flex items-center space-x-4">
-                <div id="tokenStatus" class="text-sm text-gray-600">
-                    <span id="tokenTime">Token status...</span>
-                </div>
-                <button id="refreshBtn" onclick="refreshData()" class="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 flex items-center">
-                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                    </svg>
-                    Refresh Data
-                </button>
-            </div>
-        </div>="px-6 py-4 whitespace-nowrap">
-                            <div class="flex items-center">
-                                <div>
-                                    <div class="text-sm font-medium text-gray-900">${item.name || 'Unnamed Item'}</div>
-                                    <div class="text-sm text-gray-500">ID: ${item.id}</div>
-                                </div>
+                        <td class="px-6 py-4">
+                            <div>
+                                <div class="text-sm font-medium text-gray-900">${item.name || 'Unnamed Item'}</div>
+                                <div class="text-xs text-gray-500">ID: ${item.id}</div>
+                                ${groupInfo}
                             </div>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             ${getStatusBadge(item.state)}
                         </td>
                         <td class="px-6 py-4">
-                            <div class="max-w-xs">
-                                ${keyColumns}
-                            </div>
+                            <div class="max-w-sm">${keyColumns}</div>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            ${formatDate(item.updated_at)}
+                            <div>Updated: ${formatDate(item.updated_at)}</div>
+                            <div class="text-xs">Created: ${formatDate(item.created_at)}</div>
                         </td>
                     </tr>
                 `;
             }).join('');
+
+            console.log(`✅ Rendered ${items.length} board items`);
         }
 
         function updateDebugInfo() {
+            if (!elements.debugContent) return;
+            
+            const clientStatus = mondayApp.client.getStatus();
+            const urlParams = new URLSearchParams(window.location.search);
+            
             const debugData = {
                 timestamp: new Date().toISOString(),
-                clientStatus: {
-                    isAuthenticated: app.client.isAuthenticated,
-                    boardId: app.client.boardId
+                authentication: {
+                    isAuthenticated: clientStatus.isAuthenticated,
+                    boardId: clientStatus.boardId,
+                    userId: clientStatus.userId,
+                    accountId: clientStatus.accountId,
+                    tokenExpiry: clientStatus.tokenExpiry,
+                    timeRemaining: clientStatus.timeRemaining
                 },
-                boardData: app.boardData ? {
-                    id: app.boardData.id,
-                    name: app.boardData.name,
-                    itemCount: app.boardData.items?.length || 0,
-                    columnCount: app.boardData.columns?.length || 0,
-                    state: app.boardData.state
+                urlParameters: {
+                    boardId: urlParams.get('boardId'),
+                    hasSessionToken: !!urlParams.get('sessionToken'),
+                    sessionTokenLength: urlParams.get('sessionToken')?.length
+                },
+                boardData: mondayApp.boardData ? {
+                    id: mondayApp.boardData.id,
+                    name: mondayApp.boardData.name,
+                    itemCount: mondayApp.boardData.items?.length || 0,
+                    columnCount: mondayApp.boardData.columns?.length || 0
                 } : null,
-                error: app.error,
-                userAgent: navigator.userAgent,
-                url: window.location.href
+                error: mondayApp.error
             };
 
-            elements.debugContent.textContent = JSON.stringify(debugData, null, 2);
+            elements.debugContent.innerHTML = `<pre>${JSON.stringify(debugData, null, 2)}</pre>`;
         }
 
-        // Main App Functions
+        function startTokenMonitoring() {
+            function updateTokenDisplay() {
+                const status = mondayApp.client.getStatus();
+                const minutes = Math.floor(status.timeRemaining / 60);
+                const seconds = status.timeRemaining % 60;
+                
+                if (elements.tokenTime) {
+                    if (status.timeRemaining <= 0) {
+                        elements.tokenTime.innerHTML = `<span class="text-red-600 font-medium">⚠ Expired</span>`;
+                        elements.tokenWarning?.classList.remove('hidden');
+                    } else if (status.expiringSoon) {
+                        elements.tokenTime.innerHTML = `<span class="text-yellow-600 font-medium">⏰ ${minutes}m ${seconds}s left</span>`;
+                        elements.tokenWarning?.classList.remove('hidden');
+                    } else {
+                        elements.tokenTime.innerHTML = `<span class="text-green-600 font-medium">✅ ${minutes}m remaining</span>`;
+                        elements.tokenWarning?.classList.add('hidden');
+                    }
+                }
+            }
+            
+            updateTokenDisplay();
+            
+            mondayApp.tokenCheckInterval = setInterval(() => {
+                const status = mondayApp.client.getStatus();
+                updateTokenDisplay();
+                
+                if (status.timeRemaining <= 0) {
+                    clearInterval(mondayApp.tokenCheckInterval);
+                    updateConnectionStatus('error', 'Session expired');
+                    showError('Session expired. Please refresh the page.');
+                } else if (status.expiringSoon) {
+                    updateConnectionStatus('warning', 'Session expiring soon');
+                } else {
+                    updateConnectionStatus('connected', `✅ Connected - ${Math.floor(status.timeRemaining / 60)}m left`);
+                }
+            }, 5000);
+        }
+
+        // Main Functions
         async function initializeApp() {
             try {
                 showLoading();
-                updateConnectionStatus('connecting', 'Connecting to Monday.com...');
+                updateConnectionStatus('connecting', 'Initializing...');
 
-                console.log('🚀 Starting Monday.com Board View App');
+                console.log('🚀 Starting Clean Monday.com API Client');
 
-                // Initialize the client
-                const result = await app.client.initialize();
+                const result = await mondayApp.client.initialize();
 
                 if (!result.success) {
                     throw new Error(result.error);
                 }
 
-                updateConnectionStatus('connected', `Connected to Board: ${result.boardId}`);
-
-                // Load board data
+                updateConnectionStatus('connected', '✅ Connected successfully');
                 await loadBoardData();
+                startTokenMonitoring();
 
             } catch (error) {
                 console.error('❌ App initialization failed:', error);
-                app.error = error.message;
-                showError(`Failed to connect: ${error.message}`);
+                mondayApp.error = error.message;
+                showError(error.message);
             }
 
             updateDebugInfo();
@@ -1196,52 +621,49 @@
             try {
                 console.log('📊 Loading board data...');
                 
-                app.boardData = await app.client.getBoardData();
-                console.log('✅ Board data loaded:', app.boardData);
-
-                // Render the UI
-                renderBoardInfo(app.boardData);
-                renderTasks(app.boardData.items);
+                mondayApp.boardData = await mondayApp.client.getBoardData();
+                
+                renderBoardInfo(mondayApp.boardData);
+                renderTasks(mondayApp.boardData.items);
                 showContent();
 
-                updateConnectionStatus('connected', `✅ Board loaded: ${app.boardData.items?.length || 0} items`);
+                const itemCount = mondayApp.boardData.items?.length || 0;
+                updateConnectionStatus('connected', `✅ Loaded ${itemCount} items`);
 
             } catch (error) {
                 console.error('❌ Failed to load board data:', error);
-                throw new Error(`Failed to load board data: ${error.message}`);
+                throw new Error(`Board loading failed: ${error.message}`);
+            }
+        }
+
+        async function refreshData() {
+            if (mondayApp.client.isTokenExpiringSoon()) {
+                showError('Session expiring soon. Please refresh the page.');
+                return;
+            }
+
+            try {
+                showLoading();
+                await loadBoardData();
+            } catch (error) {
+                mondayApp.error = error.message;
+                showError(`Refresh failed: ${error.message}`);
+                updateDebugInfo();
             }
         }
 
         // Event Listeners
-        elements.toggleDebug.addEventListener('click', () => {
-            const isHidden = elements.debugInfo.classList.contains('hidden');
-            elements.debugInfo.classList.toggle('hidden');
-            elements.debugArrow.classList.toggle('rotate-90', !isHidden);
+        elements.toggleDebug?.addEventListener('click', () => {
+            const isHidden = elements.debugInfo?.classList.contains('hidden');
+            elements.debugInfo?.classList.toggle('hidden');
+            elements.debugArrow?.classList.toggle('rotate-90', !isHidden);
             
             if (!isHidden) {
                 updateDebugInfo();
             }
         });
 
-        // Listen for Monday.com events
-        if (typeof mondaySDK !== 'undefined') {
-            // Set up real-time listeners after initialization
-            setTimeout(() => {
-                if (app.client.client) {
-                    app.client.client.listen("events", (res) => {
-                        console.log('📡 Monday.com event:', res);
-                        
-                        // Reload data on relevant changes
-                        if (['item_created', 'item_updated', 'column_value_changed'].includes(res.type)) {
-                            console.log('🔄 Reloading board data due to changes...');
-                            setTimeout(() => loadBoardData(), 1000);
-                        }
-                    });
-                }
-            }, 2000);
-        }
-
-        // Initialize the app when the DOM is ready
+        // Initialize
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initializeApp);
         } else {
@@ -1251,15 +673,24 @@
         // Global error handler
         window.addEventListener('error', (event) => {
             console.error('💥 Global error:', event.error);
-            if (app.error === null) {
-                app.error = event.error.message;
-                showError(`Unexpected error: ${event.error.message}`);
+            if (!mondayApp.error) {
+                mondayApp.error = event.error.message;
+                showError(`Error: ${event.error.message}`);
                 updateDebugInfo();
             }
         });
 
-        // Log when script loads
-        console.log('📱 Monday.com Board View script loaded successfully');
+        // Cleanup
+        window.addEventListener('beforeunload', () => {
+            if (mondayApp.tokenCheckInterval) {
+                clearInterval(mondayApp.tokenCheckInterval);
+            }
+        });
+
+        // Global functions
+        window.refreshData = refreshData;
+
+        console.log('✅ Clean Monday.com API Client loaded');
     </script>
 </body>
 </html>
