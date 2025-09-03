@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Monday.com Board View</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Official Monday.com SDK for iframe authentication -->
+    <script src="https://cdn.jsdelivr.net/npm/monday-sdk-js@latest/dist/main.js"></script>
 </head>
 <body class="bg-gray-50 min-h-screen">
     <div class="max-w-7xl mx-auto p-6">
@@ -12,7 +14,7 @@
         <div class="flex items-center justify-between mb-6">
             <div>
                 <h1 class="text-3xl font-bold text-gray-900 mb-2">📋 Monday.com Board View</h1>
-                <p class="text-gray-600">Pure JavaScript API Client - No External Dependencies</p>
+                <p class="text-gray-600">Official Monday.com SDK - Seamless Authentication</p>
             </div>
             <div class="flex items-center space-x-4">
                 <div id="tokenStatus" class="text-sm text-gray-600">
@@ -31,7 +33,7 @@
         <div id="connectionStatus" class="mb-6 p-4 rounded-lg border">
             <div class="flex items-center">
                 <div id="statusIndicator" class="w-3 h-3 rounded-full mr-3 bg-yellow-500"></div>
-                <span id="statusText" class="text-sm font-medium">Initializing Monday.com API Client...</span>
+                <span id="statusText" class="text-sm font-medium">Initializing Monday.com SDK...</span>
             </div>
         </div>
 
@@ -48,7 +50,7 @@
         <!-- Loading State -->
         <div id="loading" class="text-center py-12">
             <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p class="text-gray-600">Connecting to Monday.com API...</p>
+            <p class="text-gray-600">Connecting to Monday.com via Official SDK...</p>
         </div>
 
         <!-- Error State -->
@@ -75,6 +77,7 @@
         <div id="tasksContainer" class="hidden bg-white rounded-lg shadow-sm border overflow-hidden">
             <div class="px-6 py-4 border-b bg-gray-50">
                 <h3 class="text-lg font-semibold text-gray-900">Board Items</h3>
+                <p class="text-sm text-gray-600 mt-1">Your real Monday.com board tasks</p>
             </div>
             
             <div class="overflow-x-auto">
@@ -110,17 +113,16 @@
     </div>
 
     <script>
-        // Monday.com Iframe PostMessage API Client
-        class MondayIframeClient {
+        // Official Monday.com SDK Client for Iframe Authentication
+        class MondaySDKClient {
             constructor() {
-                this.sessionToken = null;
+                this.monday = null;
                 this.boardId = null;
                 this.accountId = null;
                 this.userId = null;
                 this.isAuthenticated = false;
                 this.tokenExpiry = null;
-                this.messageHandlers = new Map();
-                this.requestId = 0;
+                this.sessionToken = null;
             }
 
             parseURLParams() {
@@ -150,401 +152,143 @@
 
             async initialize() {
                 try {
-                    console.log('🚀 Initializing Monday.com Iframe PostMessage Client...');
-                    console.log('📡 Using parent window communication instead of direct API calls');
+                    console.log('🚀 Initializing Official Monday.com SDK...');
+                    console.log('📡 Using SeamlessApiClient for iframe authentication');
                     
+                    // Check if Monday SDK is available
+                    if (typeof mondaySDK === 'undefined') {
+                        throw new Error('Monday.com SDK not loaded - check CDN connection');
+                    }
+                    
+                    // Initialize Monday SDK
+                    this.monday = mondaySDK();
+                    console.log('✅ Monday.com SDK initialized successfully');
+                    
+                    // Parse URL parameters for board ID and token info
                     const params = this.parseURLParams();
                     
-                    if (!params.boardId || !params.sessionToken) {
-                        throw new Error('Missing required URL parameters (boardId or sessionToken)');
+                    if (!params.boardId) {
+                        throw new Error('Missing boardId parameter in URL');
                     }
                     
                     this.boardId = params.boardId;
                     this.sessionToken = params.sessionToken;
                     
-                    const decodedToken = this.decodeJWTPayload(params.sessionToken);
+                    // Get context from Monday.com
+                    console.log('📋 Getting context from Monday.com...');
+                    const context = await this.monday.get('context');
+                    console.log('✅ Context received:', context);
                     
-                    if (!decodedToken.dat) {
-                        throw new Error('Invalid JWT structure - missing authentication data');
+                    if (context && context.data) {
+                        // Use context data if available
+                        this.boardId = context.data.boardId || this.boardId;
+                        this.userId = context.data.userId;
+                        this.accountId = context.data.accountId;
                     }
                     
-                    this.userId = decodedToken.dat.user_id;
-                    this.accountId = decodedToken.dat.account_id;
-                    this.tokenExpiry = new Date(decodedToken.exp * 1000);
-                    
-                    if (this.tokenExpiry <= new Date()) {
-                        throw new Error(`Session token expired at ${this.tokenExpiry.toLocaleString()}`);
+                    // If we have sessionToken from URL, decode it for additional info
+                    if (this.sessionToken) {
+                        try {
+                            const decodedToken = this.decodeJWTPayload(this.sessionToken);
+                            if (decodedToken.dat) {
+                                this.userId = this.userId || decodedToken.dat.user_id;
+                                this.accountId = this.accountId || decodedToken.dat.account_id;
+                                this.tokenExpiry = new Date(decodedToken.exp * 1000);
+                            }
+                        } catch (error) {
+                            console.warn('⚠️ Could not decode sessionToken, but proceeding with SDK auth:', error.message);
+                        }
                     }
                     
                     this.isAuthenticated = true;
                     
-                    // Set up message listener for iframe communication
-                    this.setupMessageListener();
-                    
                     console.log('✅ Authentication successful:', {
+                        method: 'Official Monday.com SDK',
                         boardId: this.boardId,
                         userId: this.userId,
                         accountId: this.accountId,
-                        tokenExpiry: this.tokenExpiry.toLocaleString(),
-                        communicationMethod: 'Iframe PostMessage API'
+                        hasContext: !!context?.data,
+                        hasSessionToken: !!this.sessionToken
                     });
                     
-                    // Test connection using iframe communication
-                    await this.testConnection();
+                    // Test SDK connectivity
+                    await this.testSDKConnection();
                     
                     return {
                         success: true,
                         boardId: this.boardId,
                         userId: this.userId,
-                        accountId: this.accountId
+                        accountId: this.accountId,
+                        method: 'Monday.com SDK'
                     };
                     
                 } catch (error) {
-                    console.error('❌ Initialization failed:', error);
+                    console.error('❌ SDK initialization failed:', error);
                     return { success: false, error: error.message };
                 }
             }
 
-            setupMessageListener() {
-                console.log('📡 Setting up iframe message listener...');
-                
-                window.addEventListener('message', (event) => {
-                    // Security check - ensure message is from Monday.com
-                    if (!event.origin.includes('monday.com')) {
-                        console.warn('⚠️ Ignoring message from unknown origin:', event.origin);
-                        return;
-                    }
-                    
-                    console.log('📨 Received message from parent:', event.data);
-                    
-                    // Handle different types of responses
-                    if (event.data && event.data.type === 'api_response') {
-                        this.handleAPIResponse(event.data);
-                    } else if (event.data && event.data.requestId) {
-                        // Handle responses with request IDs
-                        const handler = this.messageHandlers.get(event.data.requestId);
-                        if (handler) {
-                            handler(event.data);
-                            this.messageHandlers.delete(event.data.requestId);
-                        }
-                    }
-                }, false);
-                
-                console.log('✅ Message listener set up successfully');
-            }
-
-            async sendMessageToParent(messageData, timeout = 10000) {
-                return new Promise((resolve, reject) => {
-                    const requestId = `req_${++this.requestId}_${Date.now()}`;
-                    
-                    // Set up response handler
-                    const timeoutId = setTimeout(() => {
-                        this.messageHandlers.delete(requestId);
-                        reject(new Error('Request timeout - no response from Monday.com parent window'));
-                    }, timeout);
-                    
-                    this.messageHandlers.set(requestId, (response) => {
-                        clearTimeout(timeoutId);
-                        
-                        if (response.error) {
-                            reject(new Error(response.error));
-                        } else {
-                            resolve(response);
-                        }
-                    });
-                    
-                    // Send message to parent window
-                    const message = {
-                        ...messageData,
-                        requestId,
-                        timestamp: Date.now(),
-                        source: 'monday-ccpm-app'
-                    };
-                    
-                    console.log('📤 Sending message to parent:', message);
-                    
-                    try {
-                        window.parent.postMessage(message, '*');
-                    } catch (error) {
-                        this.messageHandlers.delete(requestId);
-                        clearTimeout(timeoutId);
-                        reject(new Error(`Failed to send message to parent: ${error.message}`));
-                    }
-                });
-            }
-
-            async testConnection() {
-                console.log('🔌 Testing iframe communication...');
-                
+            async testSDKConnection() {
                 try {
-                    // Try to get basic user info through iframe communication
-                    const response = await this.sendMessageToParent({
-                        type: 'api_call',
-                        method: 'query',
-                        query: `query { me { id name email } }`
-                    });
+                    console.log('🔌 Testing Monday.com SDK connection...');
                     
-                    if (response.data?.me) {
-                        console.log('✅ Iframe communication successful:', response.data.me);
+                    // Test with a simple query to get current user info
+                    const userQuery = `query { me { id name email } }`;
+                    const result = await this.monday.api(userQuery);
+                    
+                    if (result.data?.me) {
+                        console.log('✅ SDK connection successful:', {
+                            userId: result.data.me.id,
+                            userName: result.data.me.name,
+                            userEmail: result.data.me.email
+                        });
+                        
+                        // Update user info from API response
+                        this.userId = result.data.me.id;
+                        
                         return true;
                     } else {
-                        // Fallback: if structured API calls don't work, try Monday SDK methods
-                        console.log('🔄 Trying alternative iframe communication methods...');
-                        return await this.testAlternativeConnection();
+                        throw new Error('No user data returned from SDK');
                     }
                 } catch (error) {
-                    console.log('🔄 Primary test failed, trying alternative methods:', error.message);
-                    return await this.testAlternativeConnection();
-                }
-            }
-
-            async testAlternativeConnection() {
-                try {
-                    // Try Monday.com's context API through iframe
-                    const response = await this.sendMessageToParent({
-                        type: 'get_context',
-                        data: 'board_info'
-                    });
-                    
-                    console.log('✅ Alternative communication successful:', response);
-                    return true;
-                } catch (error) {
-                    console.warn('⚠️ All communication tests failed, proceeding anyway:', error.message);
-                    // Don't throw error - we'll try to get board data anyway
-                    return true;
+                    console.warn('⚠️ SDK connection test failed:', error.message);
+                    console.log('🔄 Proceeding anyway - SDK might work for board queries');
+                    return true; // Don't fail initialization, just warn
                 }
             }
 
             async executeGraphQLQuery(query, variables = {}) {
-                if (!this.isAuthenticated) {
-                    throw new Error('Not authenticated');
-                }
-                
-                if (new Date() >= this.tokenExpiry) {
-                    throw new Error('Token expired');
+                if (!this.monday) {
+                    throw new Error('Monday SDK not initialized');
                 }
                 
                 try {
-                    console.log('📤 Executing GraphQL query via iframe communication...');
+                    console.log('📤 Executing GraphQL query via Monday.com SDK...');
                     console.log('📋 Query preview:', query.substring(0, 100).replace(/\s+/g, ' ').trim() + '...');
                     
-                    // Send GraphQL query through iframe postMessage
-                    const response = await this.sendMessageToParent({
-                        type: 'api_call',
-                        method: 'graphql',
-                        query: query,
-                        variables: variables,
-                        boardId: this.boardId
-                    });
+                    // Use Monday.com SDK's api method
+                    const result = await this.monday.api(query, { variables });
                     
-                    if (response.errors?.length > 0) {
-                        throw new Error(`GraphQL Error: ${response.errors[0].message}`);
+                    if (result.errors?.length > 0) {
+                        console.error('❌ GraphQL errors:', result.errors);
+                        throw new Error(`GraphQL Error: ${result.errors[0].message}`);
                     }
                     
-                    if (!response.data) {
-                        throw new Error('No data returned from iframe communication');
+                    if (!result.data) {
+                        throw new Error('No data returned from Monday.com API');
                     }
                     
-                    console.log('✅ Query executed successfully via iframe');
-                    return response;
+                    console.log('✅ Query executed successfully via Monday.com SDK');
+                    return result;
                     
                 } catch (error) {
-                    console.error('❌ Iframe query execution failed:', error);
-                    
-                    // Fallback: try alternative iframe communication methods
-                    console.log('🔄 Trying fallback iframe communication...');
-                    return await this.executeQueryFallback(query, variables);
-                }
-            }
-
-            async executeQueryFallback(query, variables) {
-                try {
-                    // Try different iframe communication approaches
-                    const fallbackMethods = [
-                        // Method 1: Direct Monday SDK communication
-                        {
-                            type: 'monday_sdk_call',
-                            method: 'api',
-                            data: { query, variables }
-                        },
-                        // Method 2: Board-specific request
-                        {
-                            type: 'get_board_data',
-                            boardId: this.boardId,
-                            includeItems: true,
-                            includeColumns: true
-                        },
-                        // Method 3: Simple data request
-                        {
-                            type: 'fetch_data',
-                            resource: 'board',
-                            id: this.boardId
-                        }
-                    ];
-                    
-                    for (const method of fallbackMethods) {
-                        try {
-                            console.log('🔄 Trying fallback method:', method.type);
-                            const response = await this.sendMessageToParent(method, 8000);
-                            
-                            if (response && (response.data || response.board || response.items)) {
-                                console.log('✅ Fallback method succeeded:', method.type);
-                                return this.normalizeResponse(response);
-                            }
-                        } catch (error) {
-                            console.log('⚠️ Fallback method failed:', method.type, error.message);
-                        }
-                    }
-                    
-                    // If all methods fail, return mock data for demonstration
-                    console.log('⚠️ All iframe communication methods failed, using mock data');
-                    return this.getMockData();
-                    
-                } catch (error) {
-                    console.error('❌ All fallback methods failed:', error);
-                    throw new Error('Unable to communicate with Monday.com parent window');
-                }
-            }
-
-            normalizeResponse(response) {
-                // Normalize different response formats to standard GraphQL format
-                if (response.data) {
-                    return response; // Already in GraphQL format
-                }
-                
-                if (response.board || response.boards) {
-                    return {
-                        data: {
-                            boards: response.boards || [response.board]
-                        }
-                    };
-                }
-                
-                if (response.items) {
-                    return {
-                        data: {
-                            boards: [{
-                                id: this.boardId,
-                                name: response.name || 'Board',
-                                items: response.items,
-                                columns: response.columns || []
-                            }]
-                        }
-                    };
-                }
-                
-                return response;
-            }
-
-            getMockData() {
-                console.log('📝 Generating mock data for demonstration...');
-                return {
-                    data: {
-                        boards: [{
-                            id: this.boardId,
-                            name: "Sample Project Board (Mock Data)",
-                            state: "active",
-                            items_count: 5,
-                            updated_at: new Date().toISOString(),
-                            columns: [
-                                { id: "name", title: "Task Name", type: "name" },
-                                { id: "status", title: "Status", type: "status" },
-                                { id: "person", title: "Person", type: "multiple-person" },
-                                { id: "date", title: "Due Date", type: "date" }
-                            ],
-                            groups: [
-                                { id: "group1", title: "To Do", color: "#ff5ac4", position: 0 },
-                                { id: "group2", title: "In Progress", color: "#ffcb00", position: 1 }
-                            ],
-                            items: [
-                                {
-                                    id: "item1",
-                                    name: "Setup project foundation",
-                                    state: "active",
-                                    created_at: "2025-01-15T10:00:00Z",
-                                    updated_at: new Date().toISOString(),
-                                    group: { id: "group1", title: "To Do", color: "#ff5ac4" },
-                                    column_values: [
-                                        { id: "status", title: "Status", text: "Working on it", value: '{"index": 1, "label": "Working on it"}', type: "status" },
-                                        { id: "person", title: "Person", text: "John Doe", value: '{"personsAndTeams": [{"id": 123, "name": "John Doe"}]}', type: "multiple-person" },
-                                        { id: "date", title: "Due Date", text: "2025-01-20", value: '{"date": "2025-01-20"}', type: "date" }
-                                    ]
-                                },
-                                {
-                                    id: "item2",
-                                    name: "Design user interface mockups",
-                                    state: "active",
-                                    created_at: "2025-01-16T09:30:00Z",
-                                    updated_at: new Date().toISOString(),
-                                    group: { id: "group1", title: "To Do", color: "#ff5ac4" },
-                                    column_values: [
-                                        { id: "status", title: "Status", text: "Stuck", value: '{"index": 2, "label": "Stuck"}', type: "status" },
-                                        { id: "person", title: "Person", text: "Jane Smith", value: '{"personsAndTeams": [{"id": 124, "name": "Jane Smith"}]}', type: "multiple-person" },
-                                        { id: "date", title: "Due Date", text: "2025-01-22", value: '{"date": "2025-01-22"}', type: "date" }
-                                    ]
-                                },
-                                {
-                                    id: "item3",
-                                    name: "Implement core functionality",
-                                    state: "active",
-                                    created_at: "2025-01-17T14:15:00Z",
-                                    updated_at: new Date().toISOString(),
-                                    group: { id: "group2", title: "In Progress", color: "#ffcb00" },
-                                    column_values: [
-                                        { id: "status", title: "Status", text: "Working on it", value: '{"index": 1, "label": "Working on it"}', type: "status" },
-                                        { id: "person", title: "Person", text: "Mike Johnson", value: '{"personsAndTeams": [{"id": 125, "name": "Mike Johnson"}]}', type: "multiple-person" },
-                                        { id: "date", title: "Due Date", text: "2025-01-25", value: '{"date": "2025-01-25"}', type: "date" }
-                                    ]
-                                },
-                                {
-                                    id: "item4",
-                                    name: "Write documentation",
-                                    state: "active",
-                                    created_at: "2025-01-18T11:45:00Z",
-                                    updated_at: new Date().toISOString(),
-                                    group: { id: "group1", title: "To Do", color: "#ff5ac4" },
-                                    column_values: [
-                                        { id: "status", title: "Status", text: "Not started", value: '{"index": 0, "label": "Not started"}', type: "status" },
-                                        { id: "person", title: "Person", text: "Sarah Wilson", value: '{"personsAndTeams": [{"id": 126, "name": "Sarah Wilson"}]}', type: "multiple-person" },
-                                        { id: "date", title: "Due Date", text: "2025-01-28", value: '{"date": "2025-01-28"}', type: "date" }
-                                    ]
-                                },
-                                {
-                                    id: "item5",
-                                    name: "Testing and QA",
-                                    state: "active",
-                                    created_at: "2025-01-19T16:20:00Z",
-                                    updated_at: new Date().toISOString(),
-                                    group: { id: "group1", title: "To Do", color: "#ff5ac4" },
-                                    column_values: [
-                                        { id: "status", title: "Status", text: "Not started", value: '{"index": 0, "label": "Not started"}', type: "status" },
-                                        { id: "person", title: "Person", text: "Alex Chen", value: '{"personsAndTeams": [{"id": 127, "name": "Alex Chen"}]}', type: "multiple-person" },
-                                        { id: "date", title: "Due Date", text: "2025-01-30", value: '{"date": "2025-01-30"}', type: "date" }
-                                    ]
-                                }
-                            ]
-                        }]
-                    }
-                };
-            }
-
-            handleAPIResponse(responseData) {
-                console.log('📨 Handling API response:', responseData);
-                
-                // Handle different types of responses from Monday.com
-                if (responseData.error) {
-                    console.error('❌ API error received:', responseData.error);
-                    return;
-                }
-                
-                if (responseData.data) {
-                    console.log('✅ API data received successfully');
-                    // Process the data as needed
+                    console.error('❌ SDK query execution failed:', error);
+                    throw error;
                 }
             }
 
             async getBoardData() {
-                console.log('📊 Fetching board data for ID:', this.boardId);
+                console.log('📊 Fetching board data via Monday.com SDK for ID:', this.boardId);
 
                 const query = `
                     query GetBoardData($boardId: ID!) {
@@ -555,12 +299,15 @@
                             state
                             items_count
                             updated_at
+                            board_folder_id
+                            board_kind
                             columns {
                                 id
                                 title
                                 type
                                 settings_str
                                 archived
+                                width
                             }
                             groups {
                                 id
@@ -568,6 +315,7 @@
                                 color
                                 position
                                 archived
+                                deleted
                             }
                             items {
                                 id
@@ -575,6 +323,7 @@
                                 state
                                 created_at
                                 updated_at
+                                creator_id
                                 group {
                                     id
                                     title
@@ -588,24 +337,42 @@
                                     title
                                     additional_info
                                 }
+                                subitems {
+                                    id
+                                    name
+                                    column_values {
+                                        id
+                                        title
+                                        text
+                                        value
+                                    }
+                                }
                             }
                         }
                     }
                 `;
                 
-                const variables = { boardId: this.boardId };
+                const variables = {
+                    boardId: this.boardId
+                };
+
                 const result = await this.executeGraphQLQuery(query, variables);
                 
                 if (!result.data.boards?.length) {
-                    throw new Error(`Board ${this.boardId} not found`);
+                    throw new Error(`Board ${this.boardId} not found or access denied. Please check board permissions.`);
                 }
                 
                 const boardData = result.data.boards[0];
                 
-                console.log('✅ Board data loaded:', {
+                console.log('✅ Real board data loaded successfully:', {
+                    id: boardData.id,
                     name: boardData.name,
+                    state: boardData.state,
                     itemCount: boardData.items?.length || 0,
-                    columnCount: boardData.columns?.length || 0
+                    columnCount: boardData.columns?.length || 0,
+                    groupCount: boardData.groups?.length || 0,
+                    boardKind: boardData.board_kind,
+                    dataSource: 'Monday.com API via Official SDK'
                 });
                 
                 return boardData;
@@ -633,14 +400,14 @@
             }
         }
 
-        // App State (Clean Version)
+        // App State (Clean Version with Official SDK)
         const mondayApp = {
-            client: new MondayIframeClient(),
+            client: new MondaySDKClient(),
             boardData: null,
             isLoading: true,
             error: null,
             tokenCheckInterval: null,
-            communicationMethod: 'Iframe PostMessage API'
+            communicationMethod: 'Official Monday.com SDK'
         };
 
         // DOM Elements
@@ -737,6 +504,9 @@
                 if (parsed.text) return parsed.text;
                 if (parsed.label) return parsed.label;
                 if (parsed.date) return new Date(parsed.date).toLocaleDateString();
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    return parsed.map(item => item.name || item.text || item).join(', ');
+                }
                 return columnValue.text || columnValue.value;
             } catch (e) {
                 return columnValue.text || columnValue.value;
@@ -755,6 +525,7 @@
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                                 </svg>
                                 <p>No items found in this board</p>
+                                <p class="text-xs mt-1">The board might be empty or you might not have access to view items</p>
                             </div>
                         </td>
                     </tr>
@@ -764,15 +535,18 @@
 
             elements.tasksTableBody.innerHTML = items.map(item => {
                 const keyColumns = item.column_values
-                    ?.filter(cv => cv.value && cv.value !== '""' && cv.value !== '{}')
+                    ?.filter(cv => cv.value && cv.value !== '""' && cv.value !== '{}' && cv.value !== 'null')
+                    ?.filter(cv => cv.type !== 'name') // Skip name column as it's already shown
                     ?.slice(0, 3)
                     ?.map(cv => {
                         const displayValue = parseColumnValue(cv);
-                        return `<span class="inline-block bg-gray-50 text-gray-800 px-2 py-1 rounded border text-xs mr-1 mb-1" title="${cv.title}">
+                        const colorClass = cv.type === 'status' ? 'bg-blue-50 text-blue-800 border-blue-200' : 'bg-gray-50 text-gray-800 border-gray-200';
+                        
+                        return `<span class="inline-block ${colorClass} px-2 py-1 rounded border text-xs mr-1 mb-1" title="${cv.title} (${cv.type})">
                             <strong>${cv.title}:</strong> ${displayValue}
                         </span>`;
                     })
-                    ?.join('') || '<span class="text-gray-400 text-sm italic">No data</span>';
+                    ?.join('') || '<span class="text-gray-400 text-sm italic">No column data</span>';
 
                 const groupInfo = item.group ? 
                     `<div class="text-xs text-gray-500 flex items-center mt-1">
@@ -780,13 +554,17 @@
                         ${item.group.title}
                     </div>` : '';
 
+                const subitemCount = item.subitems?.length ? 
+                    `<div class="text-xs text-gray-400">${item.subitems.length} subitems</div>` : '';
+
                 return `
-                    <tr class="hover:bg-gray-50">
+                    <tr class="hover:bg-gray-50 transition-colors">
                         <td class="px-6 py-4">
                             <div>
                                 <div class="text-sm font-medium text-gray-900">${item.name || 'Unnamed Item'}</div>
                                 <div class="text-xs text-gray-500">ID: ${item.id}</div>
                                 ${groupInfo}
+                                ${subitemCount}
                             </div>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
@@ -803,7 +581,7 @@
                 `;
             }).join('');
 
-            console.log(`✅ Rendered ${items.length} board items`);
+            console.log(`✅ Rendered ${items.length} real board items`);
         }
 
         function updateDebugInfo() {
@@ -821,7 +599,8 @@
                     userId: clientStatus.userId,
                     accountId: clientStatus.accountId,
                     tokenExpiry: clientStatus.tokenExpiry,
-                    timeRemaining: clientStatus.timeRemaining
+                    timeRemaining: clientStatus.timeRemaining,
+                    sdkAvailable: typeof mondaySDK !== 'undefined'
                 },
                 urlParameters: {
                     boardId: urlParams.get('boardId'),
@@ -832,14 +611,14 @@
                     hasParentWindow: window.parent !== window,
                     origin: window.location.origin,
                     parentOrigin: document.referrer || 'Unknown',
-                    messageHandlers: mondayApp.client.messageHandlers?.size || 0
+                    isInIframe: window.self !== window.top
                 },
                 boardData: mondayApp.boardData ? {
                     id: mondayApp.boardData.id,
                     name: mondayApp.boardData.name,
                     itemCount: mondayApp.boardData.items?.length || 0,
                     columnCount: mondayApp.boardData.columns?.length || 0,
-                    dataSource: mondayApp.boardData.name?.includes('Mock') ? 'Mock Data' : 'Monday.com API'
+                    dataSource: 'Official Monday.com SDK'
                 } : null,
                 error: mondayApp.error
             };
@@ -889,104 +668,8 @@
         async function initializeApp() {
             try {
                 showLoading();
-                updateConnectionStatus('connecting', 'Initializing...');
+                updateConnectionStatus('connecting', 'Initializing Official Monday.com SDK...');
 
-                console.log('🚀 Starting Monday.com Iframe PostMessage Client');
+                console.log('🚀 Starting Official Monday.com SDK Client');
 
-                const result = await mondayApp.client.initialize();
-
-                if (!result.success) {
-                    throw new Error(result.error);
-                }
-
-                updateConnectionStatus('connected', '✅ Connected via Iframe PostMessage API');
-                await loadBoardData();
-                startTokenMonitoring();
-
-            } catch (error) {
-                console.error('❌ App initialization failed:', error);
-                mondayApp.error = error.message;
-                showError(error.message);
-            }
-
-            updateDebugInfo();
-        }
-
-        async function loadBoardData() {
-            try {
-                console.log('📊 Loading board data...');
-                
-                mondayApp.boardData = await mondayApp.client.getBoardData();
-                
-                renderBoardInfo(mondayApp.boardData);
-                renderTasks(mondayApp.boardData.items);
-                showContent();
-
-                const itemCount = mondayApp.boardData.items?.length || 0;
-                updateConnectionStatus('connected', `✅ Loaded ${itemCount} items`);
-
-            } catch (error) {
-                console.error('❌ Failed to load board data:', error);
-                throw new Error(`Board loading failed: ${error.message}`);
-            }
-        }
-
-        async function refreshData() {
-            if (mondayApp.client.isTokenExpiringSoon()) {
-                showError('Session expiring soon. Please refresh the page.');
-                return;
-            }
-
-            try {
-                showLoading();
-                await loadBoardData();
-            } catch (error) {
-                mondayApp.error = error.message;
-                showError(`Refresh failed: ${error.message}`);
-                updateDebugInfo();
-            }
-        }
-
-        // Event Listeners
-        elements.toggleDebug?.addEventListener('click', () => {
-            const isHidden = elements.debugInfo?.classList.contains('hidden');
-            elements.debugInfo?.classList.toggle('hidden');
-            elements.debugArrow?.classList.toggle('rotate-90', !isHidden);
-            
-            if (!isHidden) {
-                updateDebugInfo();
-            }
-        });
-
-        // Initialize
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initializeApp);
-        } else {
-            initializeApp();
-        }
-
-        // Global error handler
-        window.addEventListener('error', (event) => {
-            console.error('💥 Global error:', event.error);
-            if (!mondayApp.error) {
-                mondayApp.error = event.error.message;
-                showError(`Error: ${event.error.message}`);
-                updateDebugInfo();
-            }
-        });
-
-        // Cleanup
-        window.addEventListener('beforeunload', () => {
-            if (mondayApp.tokenCheckInterval) {
-                clearInterval(mondayApp.tokenCheckInterval);
-            }
-        });
-
-        // Global functions
-        window.refreshData = refreshData;
-
-        console.log('✅ Monday.com Iframe PostMessage Client loaded');
-        console.log('📡 Using parent window communication instead of direct API calls');
-    </script>
-</body>
-</html>
+                const result = await mondayApp.client.
