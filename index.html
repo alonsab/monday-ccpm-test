@@ -672,4 +672,100 @@
 
                 console.log('🚀 Starting Official Monday.com SDK Client');
 
-                const result = await mondayApp.client.
+                const result = await mondayApp.client.initialize();
+
+                if (!result.success) {
+                    throw new Error(result.error);
+                }
+
+                updateConnectionStatus('connected', '✅ Connected via Official Monday.com SDK');
+                await loadBoardData();
+                startTokenMonitoring();
+
+            } catch (error) {
+                console.error('❌ App initialization failed:', error);
+                mondayApp.error = error.message;
+                showError(error.message);
+            }
+
+            updateDebugInfo();
+        }
+
+        async function loadBoardData() {
+            try {
+                console.log('📊 Loading real board data via Monday.com SDK...');
+                
+                mondayApp.boardData = await mondayApp.client.getBoardData();
+                
+                renderBoardInfo(mondayApp.boardData);
+                renderTasks(mondayApp.boardData.items);
+                showContent();
+
+                const itemCount = mondayApp.boardData.items?.length || 0;
+                updateConnectionStatus('connected', `✅ Loaded ${itemCount} real items from Monday.com`);
+
+            } catch (error) {
+                console.error('❌ Failed to load board data:', error);
+                throw new Error(`Board loading failed: ${error.message}`);
+            }
+        }
+
+        async function refreshData() {
+            if (mondayApp.client.isTokenExpiringSoon()) {
+                showError('Session expiring soon. Please refresh the page.');
+                return;
+            }
+
+            try {
+                showLoading();
+                await loadBoardData();
+            } catch (error) {
+                mondayApp.error = error.message;
+                showError(`Refresh failed: ${error.message}`);
+                updateDebugInfo();
+            }
+        }
+
+        // Event Listeners
+        elements.toggleDebug?.addEventListener('click', () => {
+            const isHidden = elements.debugInfo?.classList.contains('hidden');
+            elements.debugInfo?.classList.toggle('hidden');
+            elements.debugArrow?.classList.toggle('rotate-90', !isHidden);
+            
+            if (!isHidden) {
+                updateDebugInfo();
+            }
+        });
+
+        // Initialize
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeApp);
+        } else {
+            initializeApp();
+        }
+
+        // Global error handler
+        window.addEventListener('error', (event) => {
+            console.error('💥 Global error:', event.error);
+            if (!mondayApp.error) {
+                mondayApp.error = event.error.message;
+                showError(`Error: ${event.error.message}`);
+                updateDebugInfo();
+            }
+        });
+
+        // Cleanup
+        window.addEventListener('beforeunload', () => {
+            if (mondayApp.tokenCheckInterval) {
+                clearInterval(mondayApp.tokenCheckInterval);
+            }
+        });
+
+        // Global functions
+        window.refreshData = refreshData;
+
+        console.log('✅ Monday.com Token-based API Client loaded');
+        console.log('🔓 Using shortLivedToken extracted from JWT for direct API access');
+    </script>
+</body>
+</html>
