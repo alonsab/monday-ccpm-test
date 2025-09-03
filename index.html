@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Monday.com Board View</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Official Monday.com SDK for iframe authentication -->
-    <script src="https://cdn.jsdelivr.net/npm/monday-sdk-js@latest/dist/main.js"></script>
 </head>
 <body class="bg-gray-50 min-h-screen">
     <div class="max-w-7xl mx-auto p-6">
@@ -14,7 +12,7 @@
         <div class="flex items-center justify-between mb-6">
             <div>
                 <h1 class="text-3xl font-bold text-gray-900 mb-2">📋 Monday.com Board View</h1>
-                <p class="text-gray-600">Official Monday.com SDK - Seamless Authentication</p>
+                <p class="text-gray-600">Direct API with shortLivedToken from JWT</p>
             </div>
             <div class="flex items-center space-x-4">
                 <div id="tokenStatus" class="text-sm text-gray-600">
@@ -33,7 +31,7 @@
         <div id="connectionStatus" class="mb-6 p-4 rounded-lg border">
             <div class="flex items-center">
                 <div id="statusIndicator" class="w-3 h-3 rounded-full mr-3 bg-yellow-500"></div>
-                <span id="statusText" class="text-sm font-medium">Initializing Monday.com SDK...</span>
+                <span id="statusText" class="text-sm font-medium">Initializing Token-based API Client...</span>
             </div>
         </div>
 
@@ -50,7 +48,7 @@
         <!-- Loading State -->
         <div id="loading" class="text-center py-12">
             <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p class="text-gray-600">Connecting to Monday.com via Official SDK...</p>
+            <p class="text-gray-600">Extracting shortLivedToken from JWT and connecting...</p>
         </div>
 
         <!-- Error State -->
@@ -76,8 +74,8 @@
         <!-- Tasks Table -->
         <div id="tasksContainer" class="hidden bg-white rounded-lg shadow-sm border overflow-hidden">
             <div class="px-6 py-4 border-b bg-gray-50">
-                <h3 class="text-lg font-semibold text-gray-900">Board Items</h3>
-                <p class="text-sm text-gray-600 mt-1">Your real Monday.com board tasks</p>
+                <h3 class="text-lg font-semibold text-gray-900">Your Monday.com Board Items</h3>
+                <p class="text-sm text-gray-600 mt-1">Real data from your Monday.com account</p>
             </div>
             
             <div class="overflow-x-auto">
@@ -113,131 +111,210 @@
     </div>
 
     <script>
-        // Official Monday.com SDK Client for Iframe Authentication
-        class MondaySDKClient {
+        // Monday.com Token-based API Client (Complete Clean Implementation)
+        class MondayTokenClient {
             constructor() {
-                this.monday = null;
                 this.boardId = null;
                 this.accountId = null;
                 this.userId = null;
                 this.isAuthenticated = false;
-                this.tokenExpiry = null;
                 this.sessionToken = null;
+                this.shortLivedToken = null;
+                this.tokenExpiry = null;
+                this.apiEndpoint = 'https://api.monday.com/v2';
             }
 
             parseURLParams() {
                 const urlParams = new URLSearchParams(window.location.search);
-                return {
+                const params = {
                     boardId: urlParams.get('boardId'),
                     sessionToken: urlParams.get('sessionToken'),
                     instanceId: urlParams.get('instanceId'),
                     boardViewId: urlParams.get('boardViewId')
                 };
+                
+                console.log('🔗 URL Parameters extracted:', {
+                    boardId: params.boardId,
+                    hasSessionToken: !!params.sessionToken,
+                    sessionTokenLength: params.sessionToken?.length,
+                    instanceId: params.instanceId,
+                    boardViewId: params.boardViewId
+                });
+                
+                return params;
             }
 
             decodeJWTPayload(token) {
                 try {
+                    console.log('🔍 Decoding JWT token...');
                     const parts = token.split('.');
-                    if (parts.length !== 3) throw new Error('Invalid JWT format');
+                    if (parts.length !== 3) {
+                        throw new Error('Invalid JWT format - must have 3 parts separated by dots');
+                    }
                     
+                    // Decode the payload (second part)
                     let payload = parts[1];
-                    while (payload.length % 4) payload += '=';
+                    
+                    // Add padding if needed for base64 decoding
+                    while (payload.length % 4) {
+                        payload += '=';
+                    }
+                    
+                    // Replace URL-safe characters
                     payload = payload.replace(/-/g, '+').replace(/_/g, '/');
                     
-                    return JSON.parse(atob(payload));
+                    // Decode base64 and parse JSON
+                    const decodedPayload = JSON.parse(atob(payload));
+                    
+                    console.log('✅ JWT decoded successfully:', {
+                        hasData: !!decodedPayload.dat,
+                        exp: decodedPayload.exp,
+                        expiryTime: new Date(decodedPayload.exp * 1000).toLocaleString(),
+                        payloadKeys: Object.keys(decodedPayload)
+                    });
+                    
+                    if (decodedPayload.dat) {
+                        console.log('📋 JWT data section:', {
+                            userId: decodedPayload.dat.user_id,
+                            accountId: decodedPayload.dat.account_id,
+                            clientId: decodedPayload.dat.client_id,
+                            dataKeys: Object.keys(decodedPayload.dat)
+                        });
+                    }
+                    
+                    return decodedPayload;
                 } catch (error) {
-                    throw new Error(`JWT decode failed: ${error.message}`);
+                    console.error('❌ JWT decode failed:', error);
+                    throw new Error(`Failed to decode JWT: ${error.message}`);
                 }
+            }
+
+            extractShortLivedToken(decodedToken) {
+                console.log('🔍 Searching for shortLivedToken in JWT...');
+                
+                // Check multiple possible locations for the short-lived token
+                const possibleTokenPaths = [
+                    decodedToken.shortLivedToken,
+                    decodedToken.dat?.shortLivedToken,
+                    decodedToken.dat?.short_lived_token,
+                    decodedToken.dat?.token,
+                    decodedToken.dat?.apiToken,
+                    decodedToken.dat?.api_token,
+                    decodedToken.dat?.accessToken,
+                    decodedToken.dat?.access_token
+                ];
+                
+                console.log('🔍 Checking token paths:', possibleTokenPaths.map(t => !!t));
+                
+                for (const token of possibleTokenPaths) {
+                    if (token && typeof token === 'string' && token.length > 20) {
+                        console.log('✅ Found valid token:', {
+                            length: token.length,
+                            starts: token.substring(0, 10) + '...'
+                        });
+                        return token;
+                    }
+                }
+                
+                console.warn('⚠️ No shortLivedToken found in JWT, will use full sessionToken as fallback');
+                return null;
             }
 
             async initialize() {
                 try {
-                    console.log('🚀 Initializing Official Monday.com SDK...');
-                    console.log('📡 Using SeamlessApiClient for iframe authentication');
+                    console.log('🚀 Initializing Monday.com Token-based API Client...');
+                    console.log('🔓 Method: Extract shortLivedToken from sessionToken JWT');
                     
-                    // Check if Monday SDK is available
-                    if (typeof mondaySDK === 'undefined') {
-                        throw new Error('Monday.com SDK not loaded - check CDN connection');
-                    }
-                    
-                    // Initialize Monday SDK
-                    this.monday = mondaySDK();
-                    console.log('✅ Monday.com SDK initialized successfully');
-                    
-                    // Parse URL parameters for board ID and token info
+                    // Parse URL parameters
                     const params = this.parseURLParams();
                     
                     if (!params.boardId) {
-                        throw new Error('Missing boardId parameter in URL');
+                        throw new Error('Missing boardId parameter in URL. Please ensure the URL contains ?boardId=...');
+                    }
+                    
+                    if (!params.sessionToken) {
+                        throw new Error('Missing sessionToken parameter in URL. Please ensure the URL contains sessionToken=...');
                     }
                     
                     this.boardId = params.boardId;
                     this.sessionToken = params.sessionToken;
                     
-                    // Get context from Monday.com
-                    console.log('📋 Getting context from Monday.com...');
-                    const context = await this.monday.get('context');
-                    console.log('✅ Context received:', context);
+                    console.log('📋 Basic parameters extracted:', {
+                        boardId: this.boardId,
+                        sessionTokenLength: this.sessionToken.length
+                    });
                     
-                    if (context && context.data) {
-                        // Use context data if available
-                        this.boardId = context.data.boardId || this.boardId;
-                        this.userId = context.data.userId;
-                        this.accountId = context.data.accountId;
+                    // Decode JWT to extract authentication data
+                    const decodedToken = this.decodeJWTPayload(this.sessionToken);
+                    
+                    if (!decodedToken.dat) {
+                        throw new Error('Invalid JWT structure - missing "dat" field with authentication data');
                     }
                     
-                    // If we have sessionToken from URL, decode it for additional info
-                    if (this.sessionToken) {
-                        try {
-                            const decodedToken = this.decodeJWTPayload(this.sessionToken);
-                            if (decodedToken.dat) {
-                                this.userId = this.userId || decodedToken.dat.user_id;
-                                this.accountId = this.accountId || decodedToken.dat.account_id;
-                                this.tokenExpiry = new Date(decodedToken.exp * 1000);
-                            }
-                        } catch (error) {
-                            console.warn('⚠️ Could not decode sessionToken, but proceeding with SDK auth:', error.message);
-                        }
+                    // Extract user information from JWT
+                    this.userId = decodedToken.dat.user_id;
+                    this.accountId = decodedToken.dat.account_id;
+                    this.tokenExpiry = new Date(decodedToken.exp * 1000);
+                    
+                    console.log('✅ User info extracted from JWT:', {
+                        userId: this.userId,
+                        accountId: this.accountId,
+                        boardId: this.boardId,
+                        tokenExpiry: this.tokenExpiry.toLocaleString()
+                    });
+                    
+                    // Check if token is expired
+                    if (this.tokenExpiry <= new Date()) {
+                        throw new Error(`Session token expired at ${this.tokenExpiry.toLocaleString()}. Please refresh the page.`);
+                    }
+                    
+                    // Extract shortLivedToken from JWT
+                    this.shortLivedToken = this.extractShortLivedToken(decodedToken);
+                    
+                    // If no shortLivedToken found, use sessionToken as fallback
+                    if (!this.shortLivedToken) {
+                        console.log('🔄 Using sessionToken as authentication fallback');
+                        this.shortLivedToken = this.sessionToken;
                     }
                     
                     this.isAuthenticated = true;
                     
-                    console.log('✅ Authentication successful:', {
-                        method: 'Official Monday.com SDK',
+                    const timeRemaining = Math.floor((this.tokenExpiry - new Date()) / 1000);
+                    console.log('✅ Token-based authentication successful:', {
+                        method: 'JWT shortLivedToken extraction',
                         boardId: this.boardId,
-                        userId: this.userId,
-                        accountId: this.accountId,
-                        hasContext: !!context?.data,
-                        hasSessionToken: !!this.sessionToken
+                        hasToken: !!this.shortLivedToken,
+                        tokenLength: this.shortLivedToken?.length,
+                        timeRemaining: timeRemaining + 's'
                     });
                     
-                    // Test SDK connectivity
-                    await this.testSDKConnection();
+                    // Test API connectivity
+                    await this.testAPIConnection();
                     
                     return {
                         success: true,
                         boardId: this.boardId,
                         userId: this.userId,
                         accountId: this.accountId,
-                        method: 'Monday.com SDK'
+                        method: 'JWT Token Extraction'
                     };
                     
                 } catch (error) {
-                    console.error('❌ SDK initialization failed:', error);
+                    console.error('❌ Token client initialization failed:', error);
                     return { success: false, error: error.message };
                 }
             }
 
-            async testSDKConnection() {
+            async testAPIConnection() {
                 try {
-                    console.log('🔌 Testing Monday.com SDK connection...');
+                    console.log('🔌 Testing Monday.com API connection...');
                     
-                    // Test with a simple query to get current user info
-                    const userQuery = `query { me { id name email } }`;
-                    const result = await this.monday.api(userQuery);
+                    // Simple test query to verify authentication
+                    const testQuery = `query { me { id name email } }`;
+                    const result = await this.executeGraphQLQuery(testQuery);
                     
                     if (result.data?.me) {
-                        console.log('✅ SDK connection successful:', {
+                        console.log('✅ API connection test successful:', {
                             userId: result.data.me.id,
                             userName: result.data.me.name,
                             userEmail: result.data.me.email
@@ -245,50 +322,81 @@
                         
                         // Update user info from API response
                         this.userId = result.data.me.id;
-                        
                         return true;
                     } else {
-                        throw new Error('No user data returned from SDK');
+                        console.warn('⚠️ API test returned no user data, but proceeding with board query');
+                        return true;
                     }
                 } catch (error) {
-                    console.warn('⚠️ SDK connection test failed:', error.message);
-                    console.log('🔄 Proceeding anyway - SDK might work for board queries');
-                    return true; // Don't fail initialization, just warn
+                    console.warn('⚠️ API connection test failed:', error.message);
+                    console.log('🔄 Will proceed with board query anyway - test might fail due to permissions');
+                    return true; // Don't fail initialization on test failure
                 }
             }
 
             async executeGraphQLQuery(query, variables = {}) {
-                if (!this.monday) {
-                    throw new Error('Monday SDK not initialized');
+                if (!this.isAuthenticated || !this.shortLivedToken) {
+                    throw new Error('Not authenticated - no valid token available');
+                }
+                
+                // Check token expiry
+                if (this.tokenExpiry && new Date() >= this.tokenExpiry) {
+                    throw new Error('Authentication token expired - please refresh the page');
                 }
                 
                 try {
-                    console.log('📤 Executing GraphQL query via Monday.com SDK...');
+                    console.log('📤 Executing GraphQL query...');
                     console.log('📋 Query preview:', query.substring(0, 100).replace(/\s+/g, ' ').trim() + '...');
                     
-                    // Use Monday.com SDK's api method
-                    const result = await this.monday.api(query, { variables });
+                    const response = await fetch(this.apiEndpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${this.shortLivedToken}`,
+                            'API-Version': '2023-10',
+                            'User-Agent': 'Monday-CCPM-App/1.0'
+                        },
+                        body: JSON.stringify({
+                            query: query,
+                            variables: variables
+                        })
+                    });
+                    
+                    console.log('📡 API Response:', {
+                        status: response.status,
+                        statusText: response.statusText,
+                        ok: response.ok
+                    });
+                    
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error('❌ HTTP Error Response:', errorText);
+                        throw new Error(`HTTP ${response.status} ${response.statusText}: ${errorText}`);
+                    }
+                    
+                    const result = await response.json();
                     
                     if (result.errors?.length > 0) {
-                        console.error('❌ GraphQL errors:', result.errors);
+                        console.error('❌ GraphQL Errors:', result.errors);
                         throw new Error(`GraphQL Error: ${result.errors[0].message}`);
                     }
                     
                     if (!result.data) {
+                        console.error('❌ No data in response:', result);
                         throw new Error('No data returned from Monday.com API');
                     }
                     
-                    console.log('✅ Query executed successfully via Monday.com SDK');
+                    console.log('✅ GraphQL query executed successfully');
                     return result;
                     
                 } catch (error) {
-                    console.error('❌ SDK query execution failed:', error);
+                    console.error('❌ API query failed:', error);
                     throw error;
                 }
             }
 
             async getBoardData() {
-                console.log('📊 Fetching board data via Monday.com SDK for ID:', this.boardId);
+                console.log('📊 Fetching board data for ID:', this.boardId);
 
                 const query = `
                     query GetBoardData($boardId: ID!) {
@@ -359,12 +467,18 @@
                 const result = await this.executeGraphQLQuery(query, variables);
                 
                 if (!result.data.boards?.length) {
-                    throw new Error(`Board ${this.boardId} not found or access denied. Please check board permissions.`);
+                    throw new Error(`Board ${this.boardId} not found or access denied. Possible causes:
+                    1. Board doesn't exist or was deleted
+                    2. You don't have permission to view this board
+                    3. Board ID is incorrect
+                    4. Authentication token doesn't have sufficient permissions
+                    
+                    Please verify the board exists and you have access rights.`);
                 }
                 
                 const boardData = result.data.boards[0];
                 
-                console.log('✅ Real board data loaded successfully:', {
+                console.log('✅ Board data loaded successfully:', {
                     id: boardData.id,
                     name: boardData.name,
                     state: boardData.state,
@@ -372,7 +486,7 @@
                     columnCount: boardData.columns?.length || 0,
                     groupCount: boardData.groups?.length || 0,
                     boardKind: boardData.board_kind,
-                    dataSource: 'Monday.com API via Official SDK'
+                    dataSource: 'Monday.com Direct API (Token-based)'
                 });
                 
                 return boardData;
@@ -384,7 +498,7 @@
             }
 
             isTokenExpiringSoon() {
-                return this.getTokenTimeRemaining() < 60;
+                return this.getTokenTimeRemaining() < 300; // 5 minutes warning
             }
 
             getStatus() {
@@ -395,19 +509,21 @@
                     accountId: this.accountId,
                     tokenExpiry: this.tokenExpiry,
                     timeRemaining: this.getTokenTimeRemaining(),
-                    expiringSoon: this.isTokenExpiringSoon()
+                    expiringSoon: this.isTokenExpiringSoon(),
+                    hasShortLivedToken: !!this.shortLivedToken,
+                    tokenLength: this.shortLivedToken?.length
                 };
             }
         }
 
-        // App State (Clean Version with Official SDK)
+        // App State
         const mondayApp = {
-            client: new MondaySDKClient(),
+            client: new MondayTokenClient(),
             boardData: null,
             isLoading: true,
             error: null,
             tokenCheckInterval: null,
-            communicationMethod: 'Official Monday.com SDK'
+            communicationMethod: 'Direct API with Token Extraction'
         };
 
         // DOM Elements
@@ -442,8 +558,13 @@
                 error: 'bg-red-500',
                 connecting: 'bg-blue-500'
             };
-            elements.statusIndicator.className = `w-3 h-3 rounded-full mr-3 ${colors[status] || 'bg-gray-500'}`;
-            elements.statusText.textContent = message;
+            
+            if (elements.statusIndicator) {
+                elements.statusIndicator.className = `w-3 h-3 rounded-full mr-3 ${colors[status] || 'bg-gray-500'}`;
+            }
+            if (elements.statusText) {
+                elements.statusText.textContent = message;
+            }
         }
 
         function showLoading() {
@@ -478,13 +599,13 @@
 
         function getStatusBadge(state) {
             const colors = {
-                'active': 'bg-green-100 text-green-800',
-                'archived': 'bg-gray-100 text-gray-800',
-                'deleted': 'bg-red-100 text-red-800',
-                'done': 'bg-blue-100 text-blue-800'
+                'active': 'bg-green-100 text-green-800 border-green-200',
+                'archived': 'bg-gray-100 text-gray-800 border-gray-200',
+                'deleted': 'bg-red-100 text-red-800 border-red-200',
+                'done': 'bg-blue-100 text-blue-800 border-blue-200'
             };
             
-            return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colors[state] || 'bg-gray-100 text-gray-800'}">
+            return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${colors[state] || 'bg-gray-100 text-gray-800 border-gray-200'}">
                 ${state || 'unknown'}
             </span>`;
         }
@@ -497,16 +618,23 @@
         }
 
         function parseColumnValue(columnValue) {
-            if (!columnValue.value) return columnValue.text || '';
+            if (!columnValue.value || columnValue.value === '""' || columnValue.value === '{}') {
+                return columnValue.text || '';
+            }
             
             try {
                 const parsed = JSON.parse(columnValue.value);
+                
                 if (parsed.text) return parsed.text;
                 if (parsed.label) return parsed.label;
                 if (parsed.date) return new Date(parsed.date).toLocaleDateString();
                 if (Array.isArray(parsed) && parsed.length > 0) {
                     return parsed.map(item => item.name || item.text || item).join(', ');
                 }
+                if (parsed.personsAndTeams && Array.isArray(parsed.personsAndTeams)) {
+                    return parsed.personsAndTeams.map(person => person.name).join(', ');
+                }
+                
                 return columnValue.text || columnValue.value;
             } catch (e) {
                 return columnValue.text || columnValue.value;
@@ -524,7 +652,7 @@
                                 <svg class="w-8 h-8 mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                                 </svg>
-                                <p>No items found in this board</p>
+                                <p class="font-medium">No items found in this board</p>
                                 <p class="text-xs mt-1">The board might be empty or you might not have access to view items</p>
                             </div>
                         </td>
@@ -534,19 +662,23 @@
             }
 
             elements.tasksTableBody.innerHTML = items.map(item => {
+                // Get meaningful column values, excluding name column
                 const keyColumns = item.column_values
                     ?.filter(cv => cv.value && cv.value !== '""' && cv.value !== '{}' && cv.value !== 'null')
                     ?.filter(cv => cv.type !== 'name') // Skip name column as it's already shown
-                    ?.slice(0, 3)
+                    ?.slice(0, 4) // Show up to 4 columns for readability
                     ?.map(cv => {
                         const displayValue = parseColumnValue(cv);
-                        const colorClass = cv.type === 'status' ? 'bg-blue-50 text-blue-800 border-blue-200' : 'bg-gray-50 text-gray-800 border-gray-200';
+                        const colorClass = cv.type === 'status' ? 'bg-blue-50 text-blue-800 border-blue-200' : 
+                                          cv.type === 'date' ? 'bg-green-50 text-green-800 border-green-200' :
+                                          cv.type === 'people' ? 'bg-purple-50 text-purple-800 border-purple-200' :
+                                          'bg-gray-50 text-gray-800 border-gray-200';
                         
                         return `<span class="inline-block ${colorClass} px-2 py-1 rounded border text-xs mr-1 mb-1" title="${cv.title} (${cv.type})">
                             <strong>${cv.title}:</strong> ${displayValue}
                         </span>`;
                     })
-                    ?.join('') || '<span class="text-gray-400 text-sm italic">No column data</span>';
+                    ?.join('') || '<span class="text-gray-400 text-sm italic">No column data available</span>';
 
                 const groupInfo = item.group ? 
                     `<div class="text-xs text-gray-500 flex items-center mt-1">
@@ -575,13 +707,13 @@
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             <div>Updated: ${formatDate(item.updated_at)}</div>
-                            <div class="text-xs">Created: ${formatDate(item.created_at)}</div>
+                            <div class="text-xs text-gray-400">Created: ${formatDate(item.created_at)}</div>
                         </td>
                     </tr>
                 `;
             }).join('');
 
-            console.log(`✅ Rendered ${items.length} real board items`);
+            console.log(`✅ Rendered ${items.length} real board items from Monday.com`);
         }
 
         function updateDebugInfo() {
@@ -598,14 +730,18 @@
                     boardId: clientStatus.boardId,
                     userId: clientStatus.userId,
                     accountId: clientStatus.accountId,
-                    tokenExpiry: clientStatus.tokenExpiry,
+                    tokenExpiry: clientStatus.tokenExpiry?.toISOString(),
                     timeRemaining: clientStatus.timeRemaining,
-                    sdkAvailable: typeof mondaySDK !== 'undefined'
+                    expiringSoon: clientStatus.expiringSoon,
+                    hasShortLivedToken: clientStatus.hasShortLivedToken,
+                    tokenLength: clientStatus.tokenLength
                 },
                 urlParameters: {
                     boardId: urlParams.get('boardId'),
                     hasSessionToken: !!urlParams.get('sessionToken'),
-                    sessionTokenLength: urlParams.get('sessionToken')?.length
+                    sessionTokenLength: urlParams.get('sessionToken')?.length,
+                    instanceId: urlParams.get('instanceId'),
+                    boardViewId: urlParams.get('boardViewId')
                 },
                 iframeInfo: {
                     hasParentWindow: window.parent !== window,
@@ -616,9 +752,11 @@
                 boardData: mondayApp.boardData ? {
                     id: mondayApp.boardData.id,
                     name: mondayApp.boardData.name,
+                    state: mondayApp.boardData.state,
                     itemCount: mondayApp.boardData.items?.length || 0,
                     columnCount: mondayApp.boardData.columns?.length || 0,
-                    dataSource: 'Official Monday.com SDK'
+                    groupCount: mondayApp.boardData.groups?.length || 0,
+                    dataSource: 'Direct API with Token Extraction'
                 } : null,
                 error: mondayApp.error
             };
@@ -634,11 +772,14 @@
                 
                 if (elements.tokenTime) {
                     if (status.timeRemaining <= 0) {
-                        elements.tokenTime.innerHTML = `<span class="text-red-600 font-medium">⚠ Expired</span>`;
+                        elements.tokenTime.innerHTML = `<span class="text-red-600 font-medium">⚠ Token Expired</span>`;
                         elements.tokenWarning?.classList.remove('hidden');
                     } else if (status.expiringSoon) {
                         elements.tokenTime.innerHTML = `<span class="text-yellow-600 font-medium">⏰ ${minutes}m ${seconds}s left</span>`;
                         elements.tokenWarning?.classList.remove('hidden');
+                        if (elements.tokenWarningText) {
+                            elements.tokenWarningText.textContent = `Your session expires in ${minutes}m ${seconds}s. Please refresh the page soon.`;
+                        }
                     } else {
                         elements.tokenTime.innerHTML = `<span class="text-green-600 font-medium">✅ ${minutes}m remaining</span>`;
                         elements.tokenWarning?.classList.add('hidden');
@@ -655,22 +796,32 @@
                 if (status.timeRemaining <= 0) {
                     clearInterval(mondayApp.tokenCheckInterval);
                     updateConnectionStatus('error', 'Session expired');
-                    showError('Session expired. Please refresh the page.');
+                    showError('Your session has expired. Please refresh the page to get a new token.');
+                    
+                    // Disable refresh button
+                    const refreshBtn = document.getElementById('refreshBtn');
+                    if (refreshBtn) {
+                        refreshBtn.disabled = true;
+                        refreshBtn.className = refreshBtn.className.replace('bg-blue-600 hover:bg-blue-700', 'bg-gray-400 cursor-not-allowed');
+                        refreshBtn.innerHTML = refreshBtn.innerHTML.replace('Refresh Data', 'Session Expired');
+                    }
                 } else if (status.expiringSoon) {
-                    updateConnectionStatus('warning', 'Session expiring soon');
+                    updateConnectionStatus('warning', `Session expires in ${Math.floor(status.timeRemaining / 60)}m`);
                 } else {
-                    updateConnectionStatus('connected', `✅ Connected - ${Math.floor(status.timeRemaining / 60)}m left`);
+                    const minutes = Math.floor(status.timeRemaining / 60);
+                    updateConnectionStatus('connected', `✅ Connected - ${minutes}m remaining`);
                 }
-            }, 5000);
+            }, 10000); // Check every 10 seconds
         }
 
         // Main Functions
         async function initializeApp() {
             try {
                 showLoading();
-                updateConnectionStatus('connecting', 'Initializing Official Monday.com SDK...');
+                updateConnectionStatus('connecting', 'Extracting token from JWT...');
 
-                console.log('🚀 Starting Official Monday.com SDK Client');
+                console.log('🚀 Starting Monday.com Token-based API Client');
+                console.log('🔓 Method: Direct API with shortLivedToken extraction');
 
                 const result = await mondayApp.client.initialize();
 
@@ -678,9 +829,11 @@
                     throw new Error(result.error);
                 }
 
-                updateConnectionStatus('connected', '✅ Connected via Official Monday.com SDK');
+                updateConnectionStatus('connected', `✅ Token extracted - Loading board data...`);
                 await loadBoardData();
                 startTokenMonitoring();
+
+                console.log('🎉 App initialization completed successfully');
 
             } catch (error) {
                 console.error('❌ App initialization failed:', error);
@@ -693,7 +846,8 @@
 
         async function loadBoardData() {
             try {
-                console.log('📊 Loading real board data via Monday.com SDK...');
+                console.log('📊 Loading real board data from Monday.com...');
+                updateConnectionStatus('connecting', 'Fetching board data...');
                 
                 mondayApp.boardData = await mondayApp.client.getBoardData();
                 
@@ -702,7 +856,9 @@
                 showContent();
 
                 const itemCount = mondayApp.boardData.items?.length || 0;
-                updateConnectionStatus('connected', `✅ Loaded ${itemCount} real items from Monday.com`);
+                updateConnectionStatus('connected', `✅ Loaded ${itemCount} items from Monday.com`);
+
+                console.log('🎉 Board data loaded and rendered successfully');
 
             } catch (error) {
                 console.error('❌ Failed to load board data:', error);
@@ -712,12 +868,13 @@
 
         async function refreshData() {
             if (mondayApp.client.isTokenExpiringSoon()) {
-                showError('Session expiring soon. Please refresh the page.');
+                showError('Session expiring soon. Please refresh the page to get a new token.');
                 return;
             }
 
             try {
                 showLoading();
+                updateConnectionStatus('connecting', 'Refreshing board data...');
                 await loadBoardData();
             } catch (error) {
                 mondayApp.error = error.message;
@@ -737,7 +894,7 @@
             }
         });
 
-        // Initialize
+        // Initialize when DOM is ready
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initializeApp);
         } else {
@@ -749,23 +906,24 @@
             console.error('💥 Global error:', event.error);
             if (!mondayApp.error) {
                 mondayApp.error = event.error.message;
-                showError(`Error: ${event.error.message}`);
+                showError(`Unexpected error: ${event.error.message}`);
                 updateDebugInfo();
             }
         });
 
-        // Cleanup
+        // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
             if (mondayApp.tokenCheckInterval) {
                 clearInterval(mondayApp.tokenCheckInterval);
             }
         });
 
-        // Global functions
+        // Global functions for button onclick
         window.refreshData = refreshData;
 
-        console.log('✅ Monday.com Token-based API Client loaded');
-        console.log('🔓 Using shortLivedToken extracted from JWT for direct API access');
+        // Log successful script load
+        console.log('✅ Monday.com Token-based API Client script loaded successfully');
+        console.log('🔓 Ready to extract shortLivedToken from JWT and connect to Monday.com');
     </script>
 </body>
 </html>
