@@ -3,336 +3,179 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CCPM Buffer Management - Monday.com App</title>
+    <title>Monday.com Task Display</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.monday.com/sdk/v2/monday-sdk-v2.js"></script>
 </head>
 <body class="bg-gray-50 p-4">
-    <div class="max-w-6xl mx-auto">
+    <div class="max-w-4xl mx-auto">
         <!-- Header -->
         <div class="mb-6">
-            <h1 class="text-2xl font-bold text-gray-900 mb-2">CCPM Buffer Management</h1>
-            <p class="text-gray-600">Critical Chain Project Management for your Monday.com tasks</p>
-        </div>
-
-        <!-- Debug Information Panel -->
-        <div id="debugInfo" class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-            <h3 class="font-semibold text-blue-900 mb-2">🔧 Debug Information</h3>
-            <pre id="debugContent" class="text-xs text-blue-800 bg-white p-2 rounded max-h-40 overflow-y-auto"></pre>
+            <h1 class="text-2xl font-bold text-gray-900 mb-2">📋 My Monday.com Tasks</h1>
+            <p class="text-gray-600">Simple task display from your Monday.com board</p>
         </div>
 
         <!-- Connection Status -->
-        <div id="connectionStatus" class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-            <h3 class="font-semibold text-yellow-900 mb-2">📡 Connection Status</h3>
-            <p id="statusMessage" class="text-yellow-800">Initializing...</p>
+        <div id="statusCard" class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <h3 class="font-semibold text-blue-900 mb-2">📡 Connection Status</h3>
+            <p id="statusMessage" class="text-blue-800">🔄 Initializing...</p>
         </div>
 
-        <!-- Loading State -->
+        <!-- Board Info -->
+        <div id="boardInfoCard" class="hidden bg-white border rounded-lg p-4 mb-6">
+            <h3 class="font-semibold text-gray-900 mb-2">📊 Board Information</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div>
+                    <span class="text-gray-600">Board ID:</span>
+                    <span id="boardIdDisplay" class="font-mono ml-2">-</span>
+                </div>
+                <div>
+                    <span class="text-gray-600">Board Name:</span>
+                    <span id="boardNameDisplay" class="ml-2">-</span>
+                </div>
+                <div>
+                    <span class="text-gray-600">Total Tasks:</span>
+                    <span id="taskCountDisplay" class="ml-2">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading -->
         <div id="loading" class="text-center py-8">
             <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p class="mt-4 text-gray-600">Loading Monday.com data...</p>
+            <p class="mt-4 text-gray-600">Loading your tasks...</p>
         </div>
 
-        <!-- Error State -->
-        <div id="errorState" class="hidden bg-red-50 border border-red-200 rounded-lg p-6 mb-6">
-            <h3 class="font-semibold text-red-900 mb-2">❌ Connection Failed</h3>
-            <p id="errorMessage" class="text-red-800 mb-4"></p>
-            <button onclick="retryConnection()" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
-                Retry Connection
-            </button>
-            <button onclick="useSampleData()" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 ml-2">
-                Use Sample Data
+        <!-- Error Display -->
+        <div id="errorCard" class="hidden bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <h3 class="font-semibold text-red-900 mb-2">❌ Error</h3>
+            <p id="errorMessage" class="text-red-800 mb-4">Something went wrong</p>
+            <button onclick="loadTasks()" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
+                🔄 Try Again
             </button>
         </div>
 
-        <!-- Main Content -->
-        <div id="content" class="hidden space-y-6">
-            <!-- Board Information -->
-            <div id="boardInfo" class="bg-white rounded-lg border p-4">
-                <h3 class="font-semibold text-gray-900 mb-2">📋 Board Information</h3>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div>
-                        <span class="text-gray-600">Board ID:</span>
-                        <span id="boardIdDisplay" class="font-mono ml-2">-</span>
-                    </div>
-                    <div>
-                        <span class="text-gray-600">Board Name:</span>
-                        <span id="boardNameDisplay" class="ml-2">-</span>
-                    </div>
-                    <div>
-                        <span class="text-gray-600">Total Items:</span>
-                        <span id="itemCountDisplay" class="ml-2">-</span>
-                    </div>
-                    <div>
-                        <span class="text-gray-600">Active Tasks:</span>
-                        <span id="activeTasksDisplay" class="ml-2">-</span>
-                    </div>
-                </div>
+        <!-- Tasks Table -->
+        <div id="tasksCard" class="hidden bg-white border rounded-lg overflow-hidden">
+            <div class="px-6 py-4 border-b bg-gray-50">
+                <h3 class="text-lg font-semibold">📝 Your Tasks</h3>
+                <p class="text-sm text-gray-600 mt-1">Tasks from your Monday.com board</p>
             </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task Name</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tasksTableBody" class="bg-white divide-y divide-gray-200">
+                        <!-- Tasks will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
 
-            <!-- Project Summary -->
-            <div id="summary" class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div class="bg-white rounded-lg border p-4">
-                    <h3 class="text-sm font-medium text-gray-600">Project Duration</h3>
-                    <p id="projectDuration" class="text-2xl font-bold text-gray-900">--</p>
-                    <p class="text-xs text-gray-500">With CCPM buffers</p>
-                </div>
-                <div class="bg-white rounded-lg border p-4">
-                    <h3 class="text-sm font-medium text-gray-600">Original Estimate</h3>
-                    <p id="originalEstimate" class="text-2xl font-bold text-gray-900">--</p>
-                    <p class="text-xs text-gray-500">Traditional method</p>
-                </div>
-                <div class="bg-white rounded-lg border p-4">
-                    <h3 class="text-sm font-medium text-gray-600">Time Optimization</h3>
-                    <p id="timeSavings" class="text-2xl font-bold text-green-600">--</p>
-                    <p class="text-xs text-gray-500">CCPM improvement</p>
-                </div>
-                <div class="bg-white rounded-lg border p-4">
-                    <h3 class="text-sm font-medium text-gray-600">Critical Chain</h3>
-                    <p id="criticalChainLength" class="text-2xl font-bold text-red-600">--</p>
-                    <p class="text-xs text-gray-500">Tasks on critical path</p>
-                </div>
-            </div>
+        <!-- No Tasks Message -->
+        <div id="noTasksCard" class="hidden bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+            <h3 class="font-semibold text-yellow-900 mb-2">📭 No Tasks Found</h3>
+            <p class="text-yellow-800 mb-4">Your board doesn't have any active tasks, or they might not have the expected columns.</p>
+            <p class="text-sm text-yellow-700">Make sure your board has tasks with Status and Duration columns.</p>
+        </div>
 
-            <!-- Task Table -->
-            <div class="bg-white rounded-lg border overflow-hidden">
-                <div class="px-6 py-4 border-b bg-gray-50">
-                    <h3 class="text-lg font-semibold">📝 Tasks with CCPM Analysis</h3>
-                    <p class="text-sm text-gray-600 mt-1">Your Monday.com tasks optimized with Critical Chain methodology</p>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Task Name</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duration</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">CCPM Schedule</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Buffer Status</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Critical Chain</th>
-                            </tr>
-                        </thead>
-                        <tbody id="taskTableBody" class="bg-white divide-y divide-gray-200">
-                            <!-- Populated by JavaScript -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- CCPM Timeline -->
-            <div class="bg-white rounded-lg border p-6">
-                <h3 class="text-lg font-semibold mb-4">📊 CCPM Timeline Visualization</h3>
-                <div id="timeline" class="space-y-3 mb-6">
-                    <!-- Populated by JavaScript -->
-                </div>
-                
-                <!-- Legend -->
-                <div class="flex flex-wrap items-center gap-6 pt-4 border-t text-sm">
-                    <div class="flex items-center">
-                        <div class="w-4 h-4 bg-blue-500 rounded mr-2"></div>
-                        <span>Base Work (Aggressive)</span>
-                    </div>
-                    <div class="flex items-center">
-                        <div class="w-4 h-4 bg-orange-200 border border-orange-400 rounded mr-2"></div>
-                        <span>Buffer Protection</span>
-                    </div>
-                    <div class="flex items-center">
-                        <div class="w-4 h-4 bg-red-500 rounded mr-2"></div>
-                        <span>Critical Chain</span>
-                    </div>
-                    <div class="flex items-center">
-                        <div class="w-2 h-2 bg-green-600 rounded-full mr-2"></div>
-                        <span>Dependency Point</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- CCPM Methodology Explanation -->
-            <div class="bg-blue-50 border border-blue-200 rounded-lg p-6">
-                <h4 class="font-medium text-blue-900 mb-3">💡 Critical Chain Project Management (CCPM) Applied</h4>
-                <div class="grid md:grid-cols-2 gap-4 text-blue-800 text-sm">
-                    <ul class="space-y-2">
-                        <li>• <strong>Aggressive Scheduling:</strong> Remove safety time from individual tasks</li>
-                        <li>• <strong>Buffer Management:</strong> Protect project completion, not tasks</li>
-                        <li>• <strong>Relay Race Principle:</strong> Start next task when base work finishes</li>
-                    </ul>
-                    <ul class="space-y-2">
-                        <li>• <strong>Resource Focus:</strong> Identify and manage constraint resources</li>
-                        <li>• <strong>Critical Chain:</strong> Longest path considering dependencies + resources</li>
-                        <li>• <strong>Buffer Monitoring:</strong> Traffic light system for project health</li>
-                    </ul>
-                </div>
-            </div>
+        <!-- Debug Info (can be hidden in production) -->
+        <div id="debugCard" class="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <h3 class="font-semibold text-gray-700 mb-2">🔧 Debug Info</h3>
+            <pre id="debugContent" class="text-xs text-gray-600 bg-white p-2 rounded max-h-40 overflow-y-auto"></pre>
         </div>
     </div>
 
     <script>
-        // Monday.com SDK and app initialization
-        let monday = null;
+        // Global variables
         let boardId = null;
-        let authToken = null;
-        let ccpmEngine = null;
+        let sessionToken = null;
         let debugInfo = {};
 
-        // CCPM Engine Class
-        class CCPMEngine {
-            constructor() {
-                this.tasks = [];
-                this.criticalChain = [];
-            }
-
-            addTask(task) {
-                // CCPM: Remove 50% safety time, add as project buffer
-                const originalDuration = task.duration || 5;
-                const safetyTime = Math.ceil(originalDuration * 0.5);
-                const baseDuration = Math.max(originalDuration - safetyTime, 1);
-                
-                const ccpmTask = {
-                    id: task.id,
-                    name: task.name,
-                    status: task.status || 'Not Started',
-                    originalDuration: originalDuration,
-                    baseDuration: baseDuration,
-                    safetyTime: safetyTime,
-                    dependencies: task.dependencies || [],
-                    resources: task.resources || [],
-                    startDate: null,
-                    endDate: null,
-                    baseEndDate: null,
-                    isOnCriticalChain: false,
-                    bufferStatus: 'Green'
-                };
-                
-                this.tasks.push(ccmpTask);
-                return ccmpTask;
-            }
-
-            calculateSchedule() {
-                // Reset calculations
-                this.tasks.forEach(task => {
-                    task.startDate = null;
-                    task.endDate = null;
-                    task.baseEndDate = null;
-                    task.isOnCriticalChain = false;
-                });
-
-                // Forward pass - calculate earliest start times
-                const calculateTaskSchedule = (task) => {
-                    if (task.startDate !== null) return;
-
-                    if (task.dependencies.length === 0) {
-                        task.startDate = 0;
-                    } else {
-                        let latestPredecessorEnd = 0;
-                        task.dependencies.forEach(depId => {
-                            const depTask = this.tasks.find(t => t.id === depId);
-                            if (depTask) {
-                                calculateTaskSchedule(depTask);
-                                // CCPM: Use base end date for relay race scheduling
-                                latestPredecessorEnd = Math.max(latestPredecessorEnd, depTask.baseEndDate || 0);
-                            }
-                        });
-                        task.startDate = latestPredecessorEnd;
-                    }
-
-                    task.baseEndDate = task.startDate + task.baseDuration;
-                    task.endDate = task.startDate + task.originalDuration;
-                };
-
-                this.tasks.forEach(calculateTaskSchedule);
-                this.identifyCriticalChain();
-            }
-
-            identifyCriticalChain() {
-                // Find the longest path through the network
-                const projectEnd = Math.max(...this.tasks.map(t => t.baseEndDate || 0));
-                
-                // Trace back from project end to identify critical chain
-                const findCriticalPath = (currentEnd) => {
-                    const criticalTasks = this.tasks.filter(t => 
-                        Math.abs((t.baseEndDate || 0) - currentEnd) < 0.01
-                    );
-                    
-                    if (criticalTasks.length > 0) {
-                        const task = criticalTasks[0];
-                        task.isOnCriticalChain = true;
-                        this.criticalChain.unshift(task.id);
-                        
-                        if (task.startDate > 0) {
-                            findCriticalPath(task.startDate);
-                        }
-                    }
-                };
-
-                this.criticalChain = [];
-                findCriticalPath(projectEnd);
-            }
-
-            getProjectSummary() {
-                if (this.tasks.length === 0) {
-                    return {
-                        projectDuration: 0,
-                        originalEstimate: 0,
-                        timeSavings: 0,
-                        criticalChainLength: 0
-                    };
-                }
-
-                const projectDuration = Math.max(...this.tasks.map(t => t.baseEndDate || 0));
-                const originalEstimate = this.tasks.reduce((sum, t) => sum + t.originalDuration, 0);
-                const optimizedDuration = this.tasks.reduce((sum, t) => sum + t.baseDuration, 0);
-                const timeSavings = Math.round(((originalEstimate - optimizedDuration) / originalEstimate) * 100);
-
-                return {
-                    projectDuration: Math.ceil(projectDuration),
-                    originalEstimate: originalEstimate,
-                    timeSavings: timeSavings,
-                    criticalChainLength: this.criticalChain.length
-                };
-            }
+        // Extract parameters from URL
+        function extractUrlParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            
+            boardId = urlParams.get('boardId');
+            sessionToken = urlParams.get('sessionToken');
+            
+            debugInfo.urlParams = {
+                boardId: boardId,
+                hasSessionToken: !!sessionToken,
+                sessionTokenLength: sessionToken ? sessionToken.length : 0,
+                fullUrl: window.location.href
+            };
+            
+            updateDebugInfo();
+            return { boardId, sessionToken };
         }
 
-        // Initialize Monday.com SDK
-        async function initializeMondayApp() {
-            try {
-                updateStatus("🚀 Initializing Monday.com connection...");
-                
-                // Initialize Monday SDK
-                monday = mondaySdk();
-                
-                // Get authentication and context
-                const context = await monday.get("context");
-                
-                debugInfo = {
-                    timestamp: new Date().toISOString(),
-                    communicationMethod: "Monday SDK v2",
-                    context: context
-                };
-
-                if (context.data && context.data.boardId) {
-                    boardId = context.data.boardId;
-                    debugInfo.boardId = boardId;
-                    
-                    updateStatus("📊 Loading board data...");
-                    await loadBoardData();
-                } else {
-                    throw new Error("No board context available");
-                }
-
-            } catch (error) {
-                console.error("Initialization failed:", error);
-                debugInfo.error = error.message;
-                updateDebugInfo();
-                showError("Connection failed", error.message);
-            }
+        // Update status message
+        function updateStatus(message) {
+            document.getElementById('statusMessage').textContent = message;
+            console.log('Status:', message);
         }
 
-        // Load board data using Monday.com SDK
-        async function loadBoardData() {
+        // Update debug information
+        function updateDebugInfo() {
+            document.getElementById('debugContent').textContent = JSON.stringify(debugInfo, null, 2);
+        }
+
+        // Show error
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('errorCard').classList.remove('hidden');
+            debugInfo.error = message;
+            updateDebugInfo();
+        }
+
+        // Show tasks table
+        function showTasks() {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('tasksCard').classList.remove('hidden');
+            document.getElementById('boardInfoCard').classList.remove('hidden');
+        }
+
+        // Show no tasks message
+        function showNoTasks() {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('noTasksCard').classList.remove('hidden');
+            document.getElementById('boardInfoCard').classList.remove('hidden');
+        }
+
+        // Load tasks from Monday.com
+        async function loadTasks() {
             try {
+                // Hide previous states
+                document.getElementById('errorCard').classList.add('hidden');
+                document.getElementById('tasksCard').classList.add('hidden');
+                document.getElementById('noTasksCard').classList.add('hidden');
+                document.getElementById('loading').classList.remove('hidden');
+
+                updateStatus('🔍 Extracting board information...');
+                
+                // Get URL parameters
+                const params = extractUrlParams();
+                
+                if (!params.boardId) {
+                    throw new Error('Board ID not found in URL parameters');
+                }
+                
+                if (!params.sessionToken) {
+                    throw new Error('Session token not found in URL parameters');
+                }
+
+                updateStatus('📡 Connecting to Monday.com API...');
+                
+                // GraphQL query to get board data
                 const query = `
                     query {
-                        boards(ids: [${boardId}]) {
+                        boards(ids: [${params.boardId}]) {
                             id
                             name
                             description
@@ -353,316 +196,216 @@
                                 id
                                 title
                                 type
-                                settings_str
                             }
                         }
                     }
                 `;
 
-                updateStatus("🔍 Executing GraphQL query...");
-                const response = await monday.api(query);
+                // Make API request
+                const response = await fetch('https://api.monday.com/v2', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${params.sessionToken}`,
+                        'API-Version': '2023-10'
+                    },
+                    body: JSON.stringify({
+                        query: query
+                    })
+                });
+
+                debugInfo.apiRequest = {
+                    url: 'https://api.monday.com/v2',
+                    method: 'POST',
+                    hasToken: !!params.sessionToken,
+                    boardId: params.boardId
+                };
+
+                if (!response.ok) {
+                    throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+                }
+
+                const data = await response.json();
                 
                 debugInfo.apiResponse = {
-                    hasData: !!response.data,
-                    hasBoards: !!response.data?.boards,
-                    boardCount: response.data?.boards?.length || 0
+                    hasData: !!data.data,
+                    hasErrors: !!data.errors,
+                    errorCount: data.errors ? data.errors.length : 0
                 };
 
-                if (response.errors) {
-                    throw new Error(`GraphQL errors: ${JSON.stringify(response.errors)}`);
+                if (data.errors && data.errors.length > 0) {
+                    console.error('GraphQL errors:', data.errors);
+                    throw new Error(`GraphQL error: ${data.errors[0].message}`);
                 }
 
-                if (!response.data || !response.data.boards || response.data.boards.length === 0) {
-                    throw new Error("No board data returned from API");
+                if (!data.data || !data.data.boards || data.data.boards.length === 0) {
+                    throw new Error('No board data returned from API');
                 }
 
-                const boardData = response.data.boards[0];
-                debugInfo.boardData = {
-                    id: boardData.id,
-                    name: boardData.name,
-                    itemsCount: boardData.items_count,
-                    loadedItems: boardData.items.length,
-                    columns: boardData.columns.length
-                };
-
-                updateStatus("✅ Board data loaded successfully!");
-                processBoardData(boardData);
+                updateStatus('✅ Data received, processing tasks...');
+                
+                // Process the board data
+                processBoardData(data.data.boards[0]);
 
             } catch (error) {
-                console.error("Failed to load board data:", error);
-                debugInfo.error = `Board loading failed: ${error.message}`;
-                updateDebugInfo();
-                showError("Board loading failed", error.message);
+                console.error('Error loading tasks:', error);
+                showError(`Failed to load tasks: ${error.message}`);
             }
         }
 
-        // Process Monday.com board data into CCPM format
-        function processBoardData(boardData) {
+        // Process board data and display tasks
+        function processBoardData(board) {
             try {
-                ccpmEngine = new CCPMEngine();
+                debugInfo.boardData = {
+                    id: board.id,
+                    name: board.name,
+                    itemsCount: board.items_count,
+                    loadedItems: board.items.length,
+                    columns: board.columns.map(col => ({
+                        id: col.id,
+                        title: col.title,
+                        type: col.type
+                    }))
+                };
 
-                // Display board information
-                document.getElementById('boardIdDisplay').textContent = boardData.id;
-                document.getElementById('boardNameDisplay').textContent = boardData.name || 'Untitled Board';
-                document.getElementById('itemCountDisplay').textContent = boardData.items_count;
+                // Update board information display
+                document.getElementById('boardIdDisplay').textContent = board.id;
+                document.getElementById('boardNameDisplay').textContent = board.name || 'Unnamed Board';
+                document.getElementById('taskCountDisplay').textContent = board.items_count;
 
                 // Find relevant columns
-                const columns = boardData.columns;
-                const durationColumn = columns.find(col => 
+                const statusColumn = board.columns.find(col => 
+                    col.type === 'status' || 
+                    col.title.toLowerCase().includes('status')
+                );
+
+                const durationColumn = board.columns.find(col => 
                     col.type === 'numeric' || 
                     col.title.toLowerCase().includes('duration') ||
                     col.title.toLowerCase().includes('days') ||
+                    col.title.toLowerCase().includes('time') ||
                     col.title.toLowerCase().includes('effort')
                 );
 
-                const statusColumn = columns.find(col => col.type === 'status');
+                debugInfo.columnMapping = {
+                    statusColumn: statusColumn ? { id: statusColumn.id, title: statusColumn.title, type: statusColumn.type } : null,
+                    durationColumn: durationColumn ? { id: durationColumn.id, title: durationColumn.title, type: durationColumn.type } : null
+                };
 
-                let activeTaskCount = 0;
+                // Process active items only
+                const activeTasks = board.items.filter(item => item.state === 'active');
+                
+                debugInfo.processedTasks = {
+                    totalItems: board.items.length,
+                    activeItems: activeTasks.length,
+                    tasks: []
+                };
 
-                // Process items
-                boardData.items.forEach(item => {
-                    if (item.state === 'active') {
-                        let duration = 5; // Default duration
-                        let status = 'Not Started';
-
-                        // Extract duration
-                        if (durationColumn) {
-                            const durValue = item.column_values.find(cv => cv.id === durationColumn.id);
-                            if (durValue && durValue.value) {
-                                const parsedDuration = parseInt(durValue.value);
-                                if (!isNaN(parsedDuration) && parsedDuration > 0) {
-                                    duration = parsedDuration;
-                                }
-                            }
-                        }
-
-                        // Extract status
-                        if (statusColumn) {
-                            const statusValue = item.column_values.find(cv => cv.id === statusColumn.id);
-                            if (statusValue && statusValue.text) {
-                                status = statusValue.text;
-                            }
-                        }
-
-                        // Add task to CCPM engine
-                        ccpmEngine.addTask({
-                            id: item.id,
-                            name: item.name,
-                            duration: duration,
-                            status: status,
-                            dependencies: [], // For now, no complex dependencies
-                            resources: []
-                        });
-
-                        activeTaskCount++;
-                    }
-                });
-
-                document.getElementById('activeTasksDisplay').textContent = activeTaskCount;
-
-                if (activeTaskCount === 0) {
-                    updateStatus("⚠️ No active tasks found in board");
-                    showError("No tasks found", "Your board doesn't have any active tasks to process.");
+                if (activeTasks.length === 0) {
+                    showNoTasks();
                     return;
                 }
 
-                // Calculate CCPM schedule
-                ccmpEngine.calculateSchedule();
-                
-                // Render the application
-                renderApplication();
-                showContent();
-                updateStatus("✅ CCPM analysis complete!");
+                // Build tasks table
+                const tbody = document.getElementById('tasksTableBody');
+                tbody.innerHTML = '';
+
+                activeTasks.forEach(item => {
+                    // Extract status
+                    let status = 'No Status';
+                    if (statusColumn) {
+                        const statusValue = item.column_values.find(cv => cv.id === statusColumn.id);
+                        if (statusValue && statusValue.text) {
+                            status = statusValue.text;
+                        }
+                    }
+
+                    // Extract duration
+                    let duration = 'No Duration';
+                    if (durationColumn) {
+                        const durationValue = item.column_values.find(cv => cv.id === durationColumn.id);
+                        if (durationValue) {
+                            if (durationValue.value && durationValue.value !== '""' && durationValue.value !== 'null') {
+                                const numValue = parseInt(durationValue.value);
+                                if (!isNaN(numValue)) {
+                                    duration = numValue + ' days';
+                                }
+                            } else if (durationValue.text) {
+                                duration = durationValue.text;
+                            }
+                        }
+                    }
+
+                    // Store for debug
+                    debugInfo.processedTasks.tasks.push({
+                        id: item.id,
+                        name: item.name,
+                        status: status,
+                        duration: duration
+                    });
+
+                    // Create table row
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-gray-50';
+                    
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm font-medium text-gray-900">${item.name || 'Unnamed Task'}</div>
+                            <div class="text-xs text-gray-500">ID: ${item.id}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(status)}">
+                                ${status}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm text-gray-900">${duration}</div>
+                        </td>
+                    `;
+                    
+                    tbody.appendChild(row);
+                });
+
+                updateDebugInfo();
+                updateStatus(`✅ Successfully loaded ${activeTasks.length} tasks!`);
+                showTasks();
 
             } catch (error) {
-                console.error("Data processing failed:", error);
-                showError("Processing failed", error.message);
+                console.error('Error processing board data:', error);
+                showError(`Error processing data: ${error.message}`);
             }
         }
 
-        // Render the complete application
-        function renderApplication() {
-            renderSummary();
-            renderTaskTable();
-            renderTimeline();
-        }
-
-        // Render project summary
-        function renderSummary() {
-            const summary = ccpmEngine.getProjectSummary();
+        // Get status color based on status text
+        function getStatusColor(status) {
+            const statusLower = status.toLowerCase();
             
-            document.getElementById('projectDuration').textContent = summary.projectDuration + 'd';
-            document.getElementById('originalEstimate').textContent = summary.originalEstimate + 'd';
-            document.getElementById('timeSavings').textContent = summary.timeSavings + '%';
-            document.getElementById('criticalChainLength').textContent = summary.criticalChainLength;
-        }
-
-        // Render task table
-        function renderTaskTable() {
-            const tbody = document.getElementById('taskTableBody');
-            tbody.innerHTML = '';
-
-            ccpmEngine.tasks.forEach(task => {
-                const row = document.createElement('tr');
-                row.className = 'hover:bg-gray-50' + (task.isOnCriticalChain ? ' bg-red-50' : '');
-                
-                row.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm font-medium text-gray-900">${task.name}</div>
-                        <div class="text-xs text-gray-500">ID: ${task.id}</div>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                            ${task.status}
-                        </span>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm text-gray-900">${task.originalDuration}d</div>
-                        <div class="text-xs text-gray-500">Original estimate</div>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm text-blue-600 font-medium">${task.baseDuration}d base</div>
-                        <div class="text-xs text-gray-500">+${task.safetyTime}d buffer</div>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                            ${task.bufferStatus}
-                        </span>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        ${task.isOnCriticalChain ? 
-                            '<span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">Critical</span>' : 
-                            '<span class="text-gray-400">-</span>'}
-                    </td>
-                `;
-                
-                tbody.appendChild(row);
-            });
-        }
-
-        // Render CCPM timeline
-        function renderTimeline() {
-            const timeline = document.getElementById('timeline');
-            timeline.innerHTML = '';
-
-            if (ccmpEngine.tasks.length === 0) return;
-
-            const maxEndDate = Math.max(...ccmpEngine.tasks.map(t => t.baseEndDate || 0));
-            const scale = Math.max(5, Math.min(15, 300 / maxEndDate));
-
-            ccmpEngine.tasks.forEach(task => {
-                const timelineRow = document.createElement('div');
-                timelineRow.className = 'flex items-center mb-3';
-                
-                timelineRow.innerHTML = `
-                    <div class="w-48 pr-4">
-                        <div class="text-sm font-medium truncate ${task.isOnCriticalChain ? 'text-red-600' : ''}">${task.name}</div>
-                        <div class="text-xs text-gray-500">
-                            ${task.originalDuration}d → ${task.baseDuration}d + ${task.safetyTime}d buffer
-                        </div>
-                    </div>
-                    <div class="flex-1 relative h-12" style="min-width: 300px;">
-                        <!-- Base duration bar -->
-                        <div
-                            class="absolute h-6 top-1 rounded-l ${task.isOnCriticalChain ? 'bg-red-500' : 'bg-blue-500'} flex items-center px-2 text-xs font-medium text-white"
-                            style="left: ${(task.startDate || 0) * scale}px; width: ${Math.max(task.baseDuration * scale, 30)}px"
-                        >
-                            ${task.baseDuration}d
-                        </div>
-                        <!-- Buffer bar -->
-                        <div
-                            class="absolute h-6 top-1 rounded-r bg-orange-200 border-l-2 border-orange-400 flex items-center px-1 text-xs font-medium text-orange-800"
-                            style="left: ${((task.startDate || 0) + task.baseDuration) * scale}px; width: ${Math.max(task.safetyTime * scale, 20)}px"
-                        >
-                            +${task.safetyTime}d
-                        </div>
-                        <!-- Dependency marker -->
-                        <div
-                            class="absolute top-7 w-1 h-3 bg-green-600 rounded"
-                            style="left: ${(task.baseEndDate || 0) * scale}px"
-                            title="Next task can start here"
-                        ></div>
-                    </div>
-                `;
-                
-                timeline.appendChild(timelineRow);
-            });
-        }
-
-        // UI Helper Functions
-        function updateStatus(message) {
-            document.getElementById('statusMessage').textContent = message;
-            console.log('Status:', message);
-        }
-
-        function updateDebugInfo() {
-            document.getElementById('debugContent').textContent = JSON.stringify(debugInfo, null, 2);
-        }
-
-        function showError(title, message) {
-            document.getElementById('errorMessage').textContent = `${title}: ${message}`;
-            document.getElementById('loading').classList.add('hidden');
-            document.getElementById('errorState').classList.remove('hidden');
-            updateDebugInfo();
-        }
-
-        function showContent() {
-            document.getElementById('loading').classList.add('hidden');
-            document.getElementById('errorState').classList.add('hidden');
-            document.getElementById('content').classList.remove('hidden');
-            updateDebugInfo();
-        }
-
-        function retryConnection() {
-            document.getElementById('errorState').classList.add('hidden');
-            document.getElementById('loading').classList.remove('hidden');
-            debugInfo = {};
-            setTimeout(initializeMondayApp, 1000);
-        }
-
-        function useSampleData() {
-            updateStatus("📋 Loading sample CCPM data...");
-            
-            ccpmEngine = new CCPMEngine();
-            
-            const sampleTasks = [
-                { id: '1', name: 'Project Planning', duration: 5, status: 'Done' },
-                { id: '2', name: 'Requirements Analysis', duration: 8, status: 'In Progress' },
-                { id: '3', name: 'Design Phase', duration: 12, status: 'Not Started' },
-                { id: '4', name: 'Development Sprint 1', duration: 15, status: 'Not Started' },
-                { id: '5', name: 'Testing & QA', duration: 8, status: 'Not Started' },
-                { id: '6', name: 'Deployment', duration: 3, status: 'Not Started' }
-            ];
-
-            sampleTasks.forEach(task => ccmpEngine.addTask(task));
-            ccmpEngine.calculateSchedule();
-
-            // Update board info for sample
-            document.getElementById('boardIdDisplay').textContent = 'SAMPLE';
-            document.getElementById('boardNameDisplay').textContent = 'Sample CCPM Project';
-            document.getElementById('itemCountDisplay').textContent = sampleTasks.length;
-            document.getElementById('activeTasksDisplay').textContent = sampleTasks.length;
-
-            renderApplication();
-            showContent();
-            updateStatus("✅ Sample data loaded with CCPM analysis!");
+            if (statusLower.includes('done') || statusLower.includes('complete')) {
+                return 'bg-green-100 text-green-800';
+            } else if (statusLower.includes('working') || statusLower.includes('progress') || statusLower.includes('doing')) {
+                return 'bg-blue-100 text-blue-800';
+            } else if (statusLower.includes('stuck') || statusLower.includes('blocked')) {
+                return 'bg-red-100 text-red-800';
+            } else if (statusLower.includes('waiting') || statusLower.includes('review')) {
+                return 'bg-yellow-100 text-yellow-800';
+            } else {
+                return 'bg-gray-100 text-gray-800';
+            }
         }
 
         // Initialize when page loads
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('Monday.com CCPM App starting...');
-            updateStatus("🔄 Starting application...");
-            updateDebugInfo();
+            console.log('Monday.com Task Display - Starting...');
+            updateStatus('🚀 Starting up...');
             
-            if (typeof mondaySdk !== 'undefined') {
-                initializeMondayApp();
-            } else {
-                showError("SDK Error", "Monday.com SDK not available");
-            }
+            // Small delay to ensure everything is loaded
+            setTimeout(() => {
+                loadTasks();
+            }, 500);
         });
 
         // Export for debugging
-        window.ccmpEngine = ccmpEngine;
+        window.loadTasks = loadTasks;
         window.debugInfo = debugInfo;
     </script>
 </body>
