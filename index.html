@@ -11,13 +11,13 @@
         <!-- Header -->
         <div class="mb-6">
             <h1 class="text-2xl font-bold text-gray-900 mb-2">📋 My Monday.com Tasks</h1>
-            <p class="text-gray-600">Simple task display using PostMessage API</p>
+            <p class="text-gray-600">Simple task display using Monday.com SDK</p>
         </div>
 
         <!-- Connection Status -->
         <div id="statusCard" class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
             <h3 class="font-semibold text-blue-900 mb-2">📡 Connection Status</h3>
-            <p id="statusMessage" class="text-blue-800">🔄 Initializing PostMessage communication...</p>
+            <p id="statusMessage" class="text-blue-800">🔄 Initializing Monday.com SDK...</p>
         </div>
 
         <!-- Board Info -->
@@ -29,8 +29,8 @@
                     <span id="boardIdDisplay" class="font-mono ml-2">-</span>
                 </div>
                 <div>
-                    <span class="text-gray-600">Context:</span>
-                    <span id="contextDisplay" class="ml-2">-</span>
+                    <span class="text-gray-600">Board Name:</span>
+                    <span id="boardNameDisplay" class="ml-2">-</span>
                 </div>
                 <div>
                     <span class="text-gray-600">Total Tasks:</span>
@@ -42,32 +42,28 @@
         <!-- Loading -->
         <div id="loading" class="text-center py-8">
             <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p class="mt-4 text-gray-600">Communicating with Monday.com...</p>
+            <p class="mt-4 text-gray-600">Loading your tasks...</p>
         </div>
 
         <!-- Error Display -->
         <div id="errorCard" class="hidden bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <h3 class="font-semibold text-red-900 mb-2">❌ Error</h3>
+            <h3 class="font-semibold text-red-900 mb-2">❌ Connection Issue</h3>
             <p id="errorMessage" class="text-red-800 mb-4">Something went wrong</p>
-            <button onclick="initializeApp()" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
-                🔄 Try Again
-            </button>
-        </div>
-
-        <!-- Manual Load Button -->
-        <div id="manualLoadCard" class="hidden bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-            <h3 class="font-semibold text-yellow-900 mb-2">🔄 Load Data</h3>
-            <p class="text-yellow-800 mb-4">Click the button below to load your board data</p>
-            <button onclick="requestBoardData()" class="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700">
-                📊 Load My Tasks
-            </button>
+            <div class="space-x-2">
+                <button onclick="initializeApp()" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
+                    🔄 Try Again
+                </button>
+                <button onclick="loadSampleData()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                    📊 Try Sample Data
+                </button>
+            </div>
         </div>
 
         <!-- Tasks Table -->
         <div id="tasksCard" class="hidden bg-white border rounded-lg overflow-hidden">
             <div class="px-6 py-4 border-b bg-gray-50">
                 <h3 class="text-lg font-semibold">📝 Your Tasks</h3>
-                <p class="text-sm text-gray-600 mt-1">Tasks loaded from Monday.com</p>
+                <p class="text-sm text-gray-600 mt-1">Tasks from your Monday.com board</p>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full">
@@ -88,24 +84,37 @@
         <!-- No Tasks Message -->
         <div id="noTasksCard" class="hidden bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
             <h3 class="font-semibold text-yellow-900 mb-2">📭 No Tasks Found</h3>
-            <p class="text-yellow-800 mb-4">No tasks were found in the board data.</p>
-            <button onclick="requestBoardData()" class="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700">
-                🔄 Try Loading Again
+            <p class="text-yellow-800 mb-4">No active tasks found in your board.</p>
+            <button onclick="loadSampleData()" class="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700">
+                📊 Try Sample Data
             </button>
         </div>
 
         <!-- Debug Info -->
         <div id="debugCard" class="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <h3 class="font-semibold text-gray-700 mb-2">🔧 Debug Info</h3>
-            <pre id="debugContent" class="text-xs text-gray-600 bg-white p-2 rounded max-h-40 overflow-y-auto"></pre>
+            <details>
+                <summary class="font-semibold text-gray-700 cursor-pointer">🔧 Debug Info (Click to expand)</summary>
+                <pre id="debugContent" class="text-xs text-gray-600 bg-white p-2 rounded mt-2 max-h-40 overflow-y-auto"></pre>
+            </details>
         </div>
     </div>
 
     <script>
-        // Global variables
-        let debugInfo = {};
+        // Initialize Monday SDK using the window method
+        let monday = null;
         let boardId = null;
-        let messageId = 0;
+        let debugInfo = {};
+
+        // Extract URL parameters
+        function getUrlParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return {
+                boardId: urlParams.get('boardId'),
+                sessionToken: urlParams.get('sessionToken'),
+                instanceId: urlParams.get('instanceId'),
+                boardViewId: urlParams.get('boardViewId')
+            };
+        }
 
         // Update status message
         function updateStatus(message) {
@@ -127,17 +136,9 @@
             updateDebugInfo();
         }
 
-        // Show manual load option
-        function showManualLoad() {
-            document.getElementById('loading').classList.add('hidden');
-            document.getElementById('manualLoadCard').classList.remove('hidden');
-            document.getElementById('boardInfoCard').classList.remove('hidden');
-        }
-
         // Show tasks table
         function showTasks() {
             document.getElementById('loading').classList.add('hidden');
-            document.getElementById('manualLoadCard').classList.add('hidden');
             document.getElementById('tasksCard').classList.remove('hidden');
             document.getElementById('boardInfoCard').classList.remove('hidden');
         }
@@ -145,295 +146,204 @@
         // Show no tasks message
         function showNoTasks() {
             document.getElementById('loading').classList.add('hidden');
-            document.getElementById('manualLoadCard').classList.add('hidden');
             document.getElementById('noTasksCard').classList.remove('hidden');
             document.getElementById('boardInfoCard').classList.remove('hidden');
         }
 
-        // Initialize PostMessage communication
-        function initializeApp() {
+        // Initialize the app
+        async function initializeApp() {
             try {
                 // Hide previous states
                 document.getElementById('errorCard').classList.add('hidden');
                 document.getElementById('tasksCard').classList.add('hidden');
                 document.getElementById('noTasksCard').classList.add('hidden');
-                document.getElementById('manualLoadCard').classList.add('hidden');
                 document.getElementById('loading').classList.remove('hidden');
 
-                updateStatus('🔍 Checking environment...');
+                const params = getUrlParams();
+                boardId = params.boardId;
 
-                // Check if we're in an iframe
-                const inIframe = window.self !== window.top;
-                
                 debugInfo = {
                     timestamp: new Date().toISOString(),
+                    urlParams: params,
                     environment: {
-                        inIframe: inIframe,
+                        inIframe: window.self !== window.top,
                         hasParent: !!window.parent,
                         origin: window.location.origin,
-                        href: window.location.href
+                        userAgent: navigator.userAgent.substring(0, 50) + '...'
                     }
                 };
 
-                if (!inIframe) {
-                    throw new Error('App must run inside Monday.com iframe');
+                updateStatus('🔍 Checking for Monday SDK...');
+
+                // Method 1: Check if Monday SDK is available in window
+                if (typeof window.mondaySdk === 'function') {
+                    updateStatus('✅ Found Monday SDK in window');
+                    monday = window.mondaySdk();
+                } else if (window.parent && typeof window.parent.mondaySdk === 'function') {
+                    updateStatus('✅ Found Monday SDK in parent window');
+                    monday = window.parent.mondaySdk();
+                } else {
+                    // Method 2: Try to initialize from parent window's Monday object
+                    updateStatus('🔍 Trying parent window Monday object...');
+                    if (window.parent && window.parent.monday) {
+                        monday = window.parent.monday;
+                    } else {
+                        throw new Error('Monday SDK not found');
+                    }
                 }
 
-                // Extract board ID from URL
-                const urlParams = new URLSearchParams(window.location.search);
-                boardId = urlParams.get('boardId');
-                
-                if (!boardId) {
-                    throw new Error('Board ID not found in URL');
+                debugInfo.sdkFound = true;
+                updateStatus('📡 Getting context from Monday...');
+
+                // Get context
+                const context = await monday.get("context");
+                debugInfo.context = context;
+
+                if (context && context.data) {
+                    updateStatus('📊 Loading board data...');
+                    await loadBoardData();
+                } else {
+                    throw new Error('No context data available');
                 }
-
-                debugInfo.urlParams = {
-                    boardId: boardId,
-                    allParams: Object.fromEntries(urlParams)
-                };
-
-                document.getElementById('boardIdDisplay').textContent = boardId;
-
-                updateStatus('📡 Setting up PostMessage listener...');
-                
-                // Set up message listener
-                window.addEventListener('message', handlePostMessage);
-                
-                updateStatus('✅ PostMessage communication ready');
-                
-                // Show manual load option
-                setTimeout(() => {
-                    showManualLoad();
-                    updateDebugInfo();
-                }, 1000);
 
             } catch (error) {
                 console.error('Initialization failed:', error);
-                showError(`Initialization failed: ${error.message}`);
-            }
-        }
-
-        // Handle messages from Monday.com parent window
-        function handlePostMessage(event) {
-            try {
-                console.log('Received message:', event);
-                
-                debugInfo.lastMessage = {
-                    timestamp: new Date().toISOString(),
-                    origin: event.origin,
-                    data: event.data
-                };
-
-                // Update debug info
+                debugInfo.error = error.message;
                 updateDebugInfo();
 
-                // Handle different message types
-                if (event.data && typeof event.data === 'object') {
-                    if (event.data.type === 'board_data') {
-                        processBoardData(event.data.data);
-                    } else if (event.data.type === 'context') {
-                        processContext(event.data.data);
-                    } else if (event.data.type === 'error') {
-                        showError(`Monday.com error: ${event.data.message}`);
-                    }
+                // Try alternative approach
+                if (error.message.includes('Monday SDK not found')) {
+                    tryAlternativeInit();
+                } else {
+                    showError(`Initialization failed: ${error.message}`);
                 }
-
-            } catch (error) {
-                console.error('Error handling message:', error);
-                debugInfo.messageError = error.message;
-                updateDebugInfo();
             }
         }
 
-        // Request board data from parent
-        function requestBoardData() {
+        // Try alternative initialization
+        async function tryAlternativeInit() {
             try {
-                updateStatus('📤 Requesting board data...');
+                updateStatus('🔄 Trying alternative initialization...');
+
+                // Method 3: Use PostMessage to get context
+                window.addEventListener('message', handleMessage);
                 
-                const requestId = ++messageId;
-                
-                // Send request to parent window
-                const message = {
-                    type: 'get_board_data',
-                    requestId: requestId,
-                    boardId: boardId
+                const request = {
+                    type: 'get_context'
                 };
-
-                window.parent.postMessage(message, '*');
                 
-                debugInfo.sentMessage = {
-                    timestamp: new Date().toISOString(),
-                    message: message
-                };
-
-                updateDebugInfo();
+                window.parent.postMessage(request, '*');
                 
-                updateStatus('⏳ Waiting for board data response...');
-
-                // Set timeout for response
+                // Wait for response
                 setTimeout(() => {
-                    if (!debugInfo.lastMessage || debugInfo.lastMessage.timestamp < debugInfo.sentMessage.timestamp) {
-                        // Try alternative methods
-                        tryAlternativeDataRetrieval();
+                    if (!debugInfo.receivedContext) {
+                        updateStatus('⚠️ Context request timed out');
+                        loadSampleData();
                     }
                 }, 3000);
 
             } catch (error) {
-                console.error('Error requesting data:', error);
-                showError(`Failed to request data: ${error.message}`);
+                console.error('Alternative init failed:', error);
+                showError('All initialization methods failed. Try sample data.');
             }
         }
 
-        // Try alternative data retrieval methods
-        function tryAlternativeDataRetrieval() {
+        // Handle PostMessage responses
+        function handleMessage(event) {
             try {
-                updateStatus('🔄 Trying alternative data access...');
+                console.log('Received message:', event.data);
+                
+                if (event.data && event.data.type === 'context_response') {
+                    debugInfo.receivedContext = true;
+                    debugInfo.contextData = event.data;
+                    updateDebugInfo();
+                }
+            } catch (error) {
+                console.error('Error handling message:', error);
+            }
+        }
 
-                // Method 1: Try to access Monday SDK if available
-                if (typeof window.parent.mondaySdk !== 'undefined') {
-                    updateStatus('📡 Found Monday SDK, attempting access...');
-                    // This is a fallback - may not work due to security restrictions
-                    return;
+        // Load board data using Monday API
+        async function loadBoardData() {
+            try {
+                const query = `
+                    query {
+                        boards(ids: [${boardId}]) {
+                            id
+                            name
+                            items_count
+                            items(limit: 50) {
+                                id
+                                name
+                                state
+                                column_values {
+                                    id
+                                    title
+                                    value
+                                    text
+                                    type
+                                }
+                            }
+                            columns {
+                                id
+                                title
+                                type
+                            }
+                        }
+                    }
+                `;
+
+                updateStatus('📡 Executing GraphQL query...');
+                const response = await monday.api(query);
+
+                debugInfo.apiResponse = {
+                    hasData: !!response.data,
+                    hasErrors: !!response.errors
+                };
+
+                if (response.errors && response.errors.length > 0) {
+                    console.error('GraphQL errors:', response.errors);
+                    throw new Error(`API Error: ${response.errors[0].message}`);
                 }
 
-                // Method 2: Request context information
-                const contextRequest = {
-                    type: 'get_context',
-                    requestId: ++messageId
-                };
+                if (!response.data || !response.data.boards || response.data.boards.length === 0) {
+                    throw new Error('No board data returned');
+                }
 
-                window.parent.postMessage(contextRequest, '*');
+                const board = response.data.boards[0];
+                processBoardData(board);
+
+            } catch (error) {
+                console.error('Failed to load board data:', error);
                 
-                updateStatus('📋 Requested context information...');
-
-                // Method 3: Show sample data option
-                setTimeout(() => {
-                    showSampleDataOption();
-                }, 2000);
-
-            } catch (error) {
-                console.error('Alternative methods failed:', error);
-                showSampleDataOption();
+                // If API fails, try sample data
+                if (error.message.includes('API Error') || error.message.includes('No board data')) {
+                    updateStatus('⚠️ API call failed, showing sample data instead');
+                    loadSampleData();
+                } else {
+                    showError(`Failed to load board: ${error.message}`);
+                }
             }
         }
 
-        // Show sample data option
-        function showSampleDataOption() {
-            const sampleDataDiv = document.createElement('div');
-            sampleDataDiv.id = 'sampleDataCard';
-            sampleDataDiv.className = 'bg-green-50 border border-green-200 rounded-lg p-4 mb-6';
-            sampleDataDiv.innerHTML = `
-                <h3 class="font-semibold text-green-900 mb-2">🎯 Try Sample Data</h3>
-                <p class="text-green-800 mb-4">Let's test the display with sample tasks to make sure everything works</p>
-                <button onclick="loadSampleData()" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
-                    📊 Load Sample Tasks
-                </button>
-            `;
-            
-            document.getElementById('manualLoadCard').insertAdjacentElement('afterend', sampleDataDiv);
-            updateStatus('💡 Try sample data to test the interface');
-        }
-
-        // Load sample data for testing
-        function loadSampleData() {
-            try {
-                updateStatus('📋 Loading sample data...');
-
-                const sampleBoardData = {
-                    id: boardId,
-                    name: 'Sample Project Board',
-                    items: [
-                        {
-                            id: '1',
-                            name: 'Project Planning & Setup',
-                            state: 'active',
-                            column_values: [
-                                { id: 'status', text: 'Done', type: 'status' },
-                                { id: 'duration', text: '3 days', value: '3', type: 'numeric' }
-                            ]
-                        },
-                        {
-                            id: '2',
-                            name: 'Requirements Analysis',
-                            state: 'active',
-                            column_values: [
-                                { id: 'status', text: 'Working on it', type: 'status' },
-                                { id: 'duration', text: '5 days', value: '5', type: 'numeric' }
-                            ]
-                        },
-                        {
-                            id: '3',
-                            name: 'Design Phase',
-                            state: 'active',
-                            column_values: [
-                                { id: 'status', text: 'Waiting for review', type: 'status' },
-                                { id: 'duration', text: '8 days', value: '8', type: 'numeric' }
-                            ]
-                        },
-                        {
-                            id: '4',
-                            name: 'Development Sprint 1',
-                            state: 'active',
-                            column_values: [
-                                { id: 'status', text: 'Not started', type: 'status' },
-                                { id: 'duration', text: '10 days', value: '10', type: 'numeric' }
-                            ]
-                        },
-                        {
-                            id: '5',
-                            name: 'Testing & Quality Assurance',
-                            state: 'active',
-                            column_values: [
-                                { id: 'status', text: 'Not started', type: 'status' },
-                                { id: 'duration', text: '4 days', value: '4', type: 'numeric' }
-                            ]
-                        }
-                    ]
-                };
-
-                processBoardData(sampleBoardData);
-                updateStatus('✅ Sample data loaded successfully!');
-
-            } catch (error) {
-                console.error('Error loading sample data:', error);
-                showError(`Failed to load sample data: ${error.message}`);
-            }
-        }
-
-        // Process context information
-        function processContext(context) {
-            try {
-                debugInfo.context = context;
-                document.getElementById('contextDisplay').textContent = context.type || 'Board view';
-                updateDebugInfo();
-            } catch (error) {
-                console.error('Error processing context:', error);
-            }
-        }
-
-        // Process board data and display tasks
-        function processBoardData(boardData) {
+        // Process board data
+        function processBoardData(board) {
             try {
                 updateStatus('🔄 Processing board data...');
 
                 debugInfo.boardData = {
-                    id: boardData.id,
-                    name: boardData.name,
-                    itemsCount: boardData.items ? boardData.items.length : 0
+                    id: board.id,
+                    name: board.name,
+                    itemsCount: board.items_count,
+                    loadedItems: board.items.length
                 };
 
-                // Update board information display
-                document.getElementById('boardIdDisplay').textContent = boardData.id;
-                document.getElementById('contextDisplay').textContent = boardData.name || 'Unknown Board';
-
-                if (!boardData.items || boardData.items.length === 0) {
-                    document.getElementById('taskCountDisplay').textContent = '0';
-                    showNoTasks();
-                    return;
-                }
-
-                // Process active items only
-                const activeTasks = boardData.items.filter(item => item.state === 'active');
+                // Update board info
+                document.getElementById('boardIdDisplay').textContent = board.id;
+                document.getElementById('boardNameDisplay').textContent = board.name || 'Unnamed Board';
+                
+                // Get active tasks
+                const activeTasks = board.items.filter(item => item.state === 'active');
                 document.getElementById('taskCountDisplay').textContent = activeTasks.length;
 
                 if (activeTasks.length === 0) {
@@ -441,56 +351,50 @@
                     return;
                 }
 
-                // Build tasks table
+                // Find status and duration columns
+                const statusColumn = board.columns.find(col => col.type === 'status');
+                const durationColumn = board.columns.find(col => 
+                    col.type === 'numeric' || 
+                    col.title.toLowerCase().includes('duration') ||
+                    col.title.toLowerCase().includes('days')
+                );
+
+                // Build table
                 const tbody = document.getElementById('tasksTableBody');
                 tbody.innerHTML = '';
 
-                debugInfo.processedTasks = [];
-
                 activeTasks.forEach(item => {
-                    // Extract status
+                    // Get status
                     let status = 'No Status';
-                    const statusValue = item.column_values.find(cv => 
-                        cv.type === 'status' || 
-                        cv.id.toLowerCase().includes('status')
-                    );
-                    if (statusValue && statusValue.text) {
-                        status = statusValue.text;
+                    if (statusColumn) {
+                        const statusValue = item.column_values.find(cv => cv.id === statusColumn.id);
+                        if (statusValue && statusValue.text) {
+                            status = statusValue.text;
+                        }
                     }
 
-                    // Extract duration
+                    // Get duration
                     let duration = 'No Duration';
-                    const durationValue = item.column_values.find(cv => 
-                        cv.type === 'numeric' || 
-                        cv.id.toLowerCase().includes('duration') ||
-                        cv.id.toLowerCase().includes('days')
-                    );
-                    if (durationValue) {
-                        if (durationValue.text) {
-                            duration = durationValue.text;
-                        } else if (durationValue.value && durationValue.value !== '""' && durationValue.value !== 'null') {
-                            const numValue = parseInt(durationValue.value);
-                            if (!isNaN(numValue)) {
-                                duration = numValue + ' days';
+                    if (durationColumn) {
+                        const durValue = item.column_values.find(cv => cv.id === durationColumn.id);
+                        if (durValue) {
+                            if (durValue.text) {
+                                duration = durValue.text;
+                            } else if (durValue.value && durValue.value !== '""') {
+                                const num = parseInt(durValue.value);
+                                if (!isNaN(num)) {
+                                    duration = num + ' days';
+                                }
                             }
                         }
                     }
 
-                    // Store for debug
-                    debugInfo.processedTasks.push({
-                        id: item.id,
-                        name: item.name,
-                        status: status,
-                        duration: duration
-                    });
-
-                    // Create table row
+                    // Create row
                     const row = document.createElement('tr');
                     row.className = 'hover:bg-gray-50';
-                    
                     row.innerHTML = `
                         <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="text-sm font-medium text-gray-900">${item.name || 'Unnamed Task'}</div>
+                            <div class="text-sm font-medium text-gray-900">${item.name}</div>
                             <div class="text-xs text-gray-500">ID: ${item.id}</div>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
@@ -502,7 +406,6 @@
                             <div class="text-sm text-gray-900">${duration}</div>
                         </td>
                     `;
-                    
                     tbody.appendChild(row);
                 });
 
@@ -512,40 +415,97 @@
 
             } catch (error) {
                 console.error('Error processing board data:', error);
-                showError(`Error processing data: ${error.message}`);
+                showError(`Processing failed: ${error.message}`);
             }
         }
 
-        // Get status color based on status text
+        // Load sample data
+        function loadSampleData() {
+            updateStatus('📋 Loading sample data...');
+
+            const sampleBoard = {
+                id: boardId || 'SAMPLE',
+                name: 'Sample Project Board',
+                items_count: 5,
+                items: [
+                    {
+                        id: '1',
+                        name: 'Project Setup & Planning',
+                        state: 'active',
+                        column_values: [
+                            { id: 'status', text: 'Done', type: 'status' },
+                            { id: 'duration', text: '3 days', value: '3', type: 'numeric' }
+                        ]
+                    },
+                    {
+                        id: '2',
+                        name: 'Requirements Gathering',
+                        state: 'active',
+                        column_values: [
+                            { id: 'status', text: 'Working on it', type: 'status' },
+                            { id: 'duration', text: '5 days', value: '5', type: 'numeric' }
+                        ]
+                    },
+                    {
+                        id: '3',
+                        name: 'Design & Architecture',
+                        state: 'active',
+                        column_values: [
+                            { id: 'status', text: 'Waiting for review', type: 'status' },
+                            { id: 'duration', text: '8 days', value: '8', type: 'numeric' }
+                        ]
+                    },
+                    {
+                        id: '4',
+                        name: 'Development Phase 1',
+                        state: 'active',
+                        column_values: [
+                            { id: 'status', text: 'Not started', type: 'status' },
+                            { id: 'duration', text: '12 days', value: '12', type: 'numeric' }
+                        ]
+                    },
+                    {
+                        id: '5',
+                        name: 'Testing & Deployment',
+                        state: 'active',
+                        column_values: [
+                            { id: 'status', text: 'Not started', type: 'status' },
+                            { id: 'duration', text: '4 days', value: '4', type: 'numeric' }
+                        ]
+                    }
+                ],
+                columns: [
+                    { id: 'status', title: 'Status', type: 'status' },
+                    { id: 'duration', title: 'Duration', type: 'numeric' }
+                ]
+            };
+
+            processBoardData(sampleBoard);
+            updateStatus('✅ Sample data loaded successfully!');
+        }
+
+        // Get status color
         function getStatusColor(status) {
-            const statusLower = status.toLowerCase();
-            
-            if (statusLower.includes('done') || statusLower.includes('complete')) {
-                return 'bg-green-100 text-green-800';
-            } else if (statusLower.includes('working') || statusLower.includes('progress') || statusLower.includes('doing')) {
-                return 'bg-blue-100 text-blue-800';
-            } else if (statusLower.includes('stuck') || statusLower.includes('blocked')) {
-                return 'bg-red-100 text-red-800';
-            } else if (statusLower.includes('waiting') || statusLower.includes('review')) {
-                return 'bg-yellow-100 text-yellow-800';
-            } else {
-                return 'bg-gray-100 text-gray-800';
-            }
+            const s = status.toLowerCase();
+            if (s.includes('done') || s.includes('complete')) return 'bg-green-100 text-green-800';
+            if (s.includes('working') || s.includes('progress')) return 'bg-blue-100 text-blue-800';
+            if (s.includes('stuck') || s.includes('blocked')) return 'bg-red-100 text-red-800';
+            if (s.includes('waiting') || s.includes('review')) return 'bg-yellow-100 text-yellow-800';
+            return 'bg-gray-100 text-gray-800';
         }
 
         // Initialize when page loads
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('Monday.com Task Display with PostMessage - Starting...');
-            updateStatus('🚀 Starting up...');
+            console.log('Monday.com Task Display - Starting...');
+            updateStatus('🚀 Starting application...');
             
-            // Small delay to ensure everything is loaded
             setTimeout(() => {
                 initializeApp();
-            }, 500);
+            }, 1000);
         });
 
-        // Export for debugging
-        window.requestBoardData = requestBoardData;
+        // Global functions
+        window.initializeApp = initializeApp;
         window.loadSampleData = loadSampleData;
         window.debugInfo = debugInfo;
     </script>
